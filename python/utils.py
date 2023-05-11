@@ -16,6 +16,7 @@ from proj import *
 from SPG import *
 
 # one-bit MC
+# reference: 1-bit matrix completion on https://mdav.ece.gatech.edu/software/
 def f_(x,q):
     return q/(1+np.exp(-x))
 
@@ -32,17 +33,17 @@ def logObjectiveGeneral(x,y,idx,f,fprime):
     return F, G
 
 def projectNuclear(B,d1,d2,radius,alpha):
-    U,S,Vh = np.linalg.svd(B.reshape((d1,d2)))
+    U,S,Vh = np.linalg.svd(B.reshape((d1,d2)), full_matrices=False)
 
     s2 = euclidean_proj_l1ball(S,radius)
 
     B_proj = U@np.diag(s2)@Vh
     
-#     B_proj[B_proj < 0] = 0.01
-    
     return B_proj.reshape((d1*d2,))
 
 
+# fit logistic missingness
+# reference: https://github.com/Austinlccvic/A-Note-onStatistical-Inference-for-Noisy-Incomplete-1-Bit-Matrix
 def logis(data, theta, beta, q=1, tau = 0.3, tol = 0.1):
     N=theta.shape[0]
     J=beta.shape[0]
@@ -59,7 +60,7 @@ def logis(data, theta, beta, q=1, tau = 0.3, tol = 0.1):
         prob = q/(1+np.exp(-temp))
         grad = np.exp(-temp)*(1/(1+np.exp(-temp)) - (1-data)/(1-q+np.exp(-temp)))
         theta = theta + tau * np.mean(grad, axis=1).reshape((N,1)) #update for theta estimates
-#         theta = theta - np.mean(theta) #identifiability constraint
+        theta = theta - np.mean(theta) #identifiability constraint
         temp = theta @ o1 + o2 @ beta.T
         temp1 = np.log(1+np.exp(-temp))
         temp2 = np.log(1-q+np.exp(-temp))
@@ -67,33 +68,18 @@ def logis(data, theta, beta, q=1, tau = 0.3, tol = 0.1):
         prob = q/(1+np.exp(-temp))
         grad = np.exp(-temp)*(1/(1+np.exp(-temp)) - (1-data)/(1-q+np.exp(-temp)))
         beta = beta + tau * np.mean(grad, axis=0).reshape((J,1)) #update for beta estimates
-#         beta = beta-np.mean(theta)
         temp = theta @ o1 + o2 @ beta.T
         temp1 = np.log(1+np.exp(-temp))
         temp2 = np.log(1-q+np.exp(-temp))
         JML = np.sum(-temp1 + (1-data)*temp2)
-#         print(JML)
   
     return theta, beta
 
-
-# missing mechanism
-def link_logis(u,v):
-    d1 = u.shape[0]
-    d2 = v.shape[0]
-    P = np.zeros((d1,d2))
-    for i in range(d1):
-        for j in range(d2):
-            P[i,j] = np.exp(u[i]+v[j]) / (1+np.exp(u[i]+v[j]))
-    return P
-
-# generate (low-rank) matrix
+# generate (low-rank) matrix M^*
 def mat_gen(d1,d2,P,k,M_mean):
 
     U = np.random.normal(0,1,d1*k).reshape((d1,k))
     V = np.random.normal(0,1,d2*k).reshape((d2,k))
-#     for i in range(5,k):
-#         U[(10*i):(10*(i+1)),i] = U[(10*i):(10*(i+1)),i] + 10
     U = scilinalg.orth(U)
     V = scilinalg.orth(V)
     s = np.ones(k)
@@ -107,9 +93,9 @@ def mat_gen(d1,d2,P,k,M_mean):
     return M_star, M, S
 
 def mat_gen_mis(d1,d2,P,k,M_mean):
-
-    U = np.random.standard_cauchy(d1*k).reshape((d1,k))
-    V = np.random.standard_cauchy(d2*k).reshape((d2,k))
+    
+    U = np.random.standard_t(1.2, size=d1*k).reshape((d1,k))
+    V = np.random.standard_t(1.2, size=d2*k).reshape((d2,k))
     
     U = scilinalg.orth(U)
     V = scilinalg.orth(V)
@@ -124,25 +110,11 @@ def mat_gen_mis(d1,d2,P,k,M_mean):
     return M_star, M, S
 
 def mat_gen_mis_(d1,d2,P,k,M_mean):
-
-#     U1 = np.random.standard_cauchy(d1*5).reshape((d1,5))
-#     V1 = np.random.standard_cauchy(d2*5).reshape((d2,5))
-#     U2 = np.random.standard_cauchy(d1*(k-5)).reshape((d1,k-5))
-#     V2 = np.random.standard_cauchy(d2*(k-5)).reshape((d2,k-5))
-#     U = np.concatenate((U1,U2), axis=1)
-#     V = np.concatenate((V1,V2), axis=1)
-
     U = np.random.normal(0,1,d1*k).reshape((d1,k))
     V = np.random.normal(0,1,d2*k).reshape((d2,k))
-#     U = np.random.standard_cauchy(d1*k).reshape((d1,k))
-#     V = np.random.standard_cauchy(d2*k).reshape((d2,k))
     
     U = scilinalg.orth(U)
     V = scilinalg.orth(V)
-#     s1 = np.ones(5)
-#     eps = 0.8
-#     s2 = eps * np.ones(k-5)
-#     s = np.append(s1, s2)
     s = np.ones(k)
     
     M_star = U@np.diag(s)@V.T
@@ -168,29 +140,6 @@ def svds_(M_,k):
     s_k = s_k[:k]
     vt_k = vt_k[:k,:]
     return u_k, s_k, vt_k
-
-# logistic regression to estimate P
-def logis_reg(Y):
-    d1, d2 = Y.shape[0], Y.shape[1]
-    N = d1*d2
-    X = np.zeros((N, d1+d2))
-    y = np.zeros(N)
-    
-    # create data arrays
-    idx = 0
-    for i in range(d1):
-        for j in range(d2):
-            X[idx, i] = 1
-            X[idx, d1+j] = 1
-            y[idx] = Y[i,j]
-            idx+=1
-    
-    clf = LogisticRegression(random_state=0, penalty='none', fit_intercept=False).fit(X, y)
-    coef = clf.coef_.reshape((d1+d2,))
-    a = coef[:d1]
-    b = coef[d1:]
-    
-    return a, b
 
 # nonconvex matrix completion
 def SVT(X, tau):
@@ -267,17 +216,6 @@ def cvx_mc(A, S, p_est, rk, sigma_est, lam=0, eta=0.1, max_iter=1000):
     sigmaS = np.sqrt(var)
     
     return Z_d, X_d, Y_d, sigma_est, sigmaS
-
-# def solve(M_, U_, Ω_, r, mu):
-#     V_ = np.zeros((M_.shape[1], r))
-#     mu_I = mu * np.eye(U_.shape[1])
-#     for j in range(M_.shape[1]):
-#         X1 = Ω_[:, j:j+1].copy() * U_
-#         X2 = X1.T @ X1 + mu_I
-#         V_[j] = (np.linalg.pinv(X2) @ X1.T @ (M_[:, j:j+1].copy())).T
-#         # print(M[:, j:j+1].shape)
-#         # V_[j] = np.linalg.solve(X2, X1.T @ (M[:, j:j+1].copy())).reshape(-1)
-#     return V_
     
     
 def ALS_solve(M, Ω, r, mu, epsilon=1e-3, max_iterations=100, debug = False):
@@ -360,7 +298,7 @@ def weighted_quantile(v,prob,w):
         return v[np.min(i)]
     
 # conformalized matrix completion
-def CP_split_svd(M0,ind,alpha,P,rk,wtd,het,w,oracle,base,kap,verbose=False):
+def cmc(M0,ind,alpha,P,rk,wtd,het,w,oracle,base,kap,verbose=False):
     # weights are used for computing quantiles for the prediction interval
     d1, d2 = M0.shape
     S = np.zeros((d1,d2))
@@ -393,12 +331,16 @@ def CP_split_svd(M0,ind,alpha,P,rk,wtd,het,w,oracle,base,kap,verbose=False):
         if het=='homo':
             P_hat_ = (1/p_split)*np.mean(S_train)*np.ones(d1*d2).reshape((d1,d2))
             P_lo_ = P_hat_
-        if het == 'logis1':
+        if het == 'logis1' or het == 'logis2':
             yy = 2*(S_train-0.5).ravel()
             x_init = np.zeros(N)
             idx = range(N)
             const   = 1.0
-            radius  = const * np.sqrt(d1*d2*2)
+            if het == 'logis1':
+                k_l = 5
+            else:
+                k_l = 1
+            radius  = const * np.sqrt(d1*d2*k_l)
             f_loc = lambda x: f_(x,p_split)
             fprime_loc = lambda x: fprime(x,p_split)
             funObj  = lambda x_var: logObjectiveGeneral(x_var,yy,idx,f_loc,fprime_loc)

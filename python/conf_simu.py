@@ -33,7 +33,6 @@ def gen_(d1,d2,het,sd,tail,pr,M_mean,mis_set,k_star):
         L = 0.5
         k_p = 5
         u = L*np.random.uniform(0,2,d1*k_p).reshape((d1,k_p))
-#         u = L*np.random.uniform(-1,1,d1*k_p).reshape((d1,k_p))
         v = L*np.random.uniform(-1,1,d2*k_p).reshape((d2,k_p))
         AA = u @ v.T
         P = 1/(1+np.exp(-AA))
@@ -45,6 +44,13 @@ def gen_(d1,d2,het,sd,tail,pr,M_mean,mis_set,k_star):
         o2 = np.ones((d2,1))
         AA = u[:,:1]@o2.T + o1@v[:,:1].T
         P = 1/(1+np.exp(-AA))
+    elif het == 'logis2':
+        L = 0.5
+        k_l = 1
+        u = L*np.random.uniform(0,2,d1*k_l).reshape((d1,k_l))
+        v = L*np.random.uniform(-1,1,d2*k_l).reshape((d2,k_l))
+        AA = u@v.T
+        P = 1/(1+np.exp(-AA))
     elif het == 'homo':
         # homogeneous missingness
         pr = pr
@@ -52,12 +58,10 @@ def gen_(d1,d2,het,sd,tail,pr,M_mean,mis_set,k_star):
 
     if mis_set == 1:
         M_star, A, S = mat_gen_mis(d1,d2,P,k_star,M_mean)
-    elif mis_set == 2:
-        M_star, A, S = mat_gen_mis_(d1,d2,P,k_star,M_mean)
     else:
         M_star, A, S = mat_gen(d1,d2,P,k_star,M_mean)
     
-    
+    # tails
     if tail == 'exp':
         E = sd * np.random.exponential(size=d1*d2).reshape((d1,d2))
     if tail == 'cauchy':
@@ -81,7 +85,6 @@ def gen_(d1,d2,het,sd,tail,pr,M_mean,mis_set,k_star):
             Q = u @ v.T
         elif het == 'logis1':
             u = L*np.random.uniform(0,2,d1*k_p).reshape((d1,k_p))
-#             u = L*np.random.uniform(-1,1,d1*k_p).reshape((d1,k_p))
             v = L*np.random.uniform(-1,1,d2*k_p).reshape((d2,k_p))
             AA = u @ v.T
             Q = 1/(1+np.exp(-AA))
@@ -92,6 +95,11 @@ def gen_(d1,d2,het,sd,tail,pr,M_mean,mis_set,k_star):
             o1 = np.ones((d1,1))
             o2 = np.ones((d2,1))
             AA = u[:,:1]@o2.T + o1@v[:,:1].T
+            Q = 1/(1+np.exp(-AA))
+        elif het == 'logis2':
+            u = L*np.random.uniform(0,2,d1*k_l).reshape((d1,k_l))
+            v = L*np.random.uniform(-1,1,d2*k_l).reshape((d2,k_l))
+            AA = u@v.T
             Q = 1/(1+np.exp(-AA))
         elif het == 'homo':
             # homogeneous missingness
@@ -108,6 +116,12 @@ def cfmc_simu(alpha,rk,A,M_star,P,het,kap,sigma_true=False,plot=False,full_exp=F
     
     d1, d2 = A.shape[0], A.shape[1]
     S = (A!=0)
+    
+    # empirical quantiles
+    a = A.ravel()
+    a = a[a!=0]
+    lo_q = np.quantile(a, alpha/2)
+    up_q = np.quantile(a, 1-alpha/2)
         
     # M_star: underlying true matrix
     # A: partially observed matrix
@@ -115,16 +129,12 @@ def cfmc_simu(alpha,rk,A,M_star,P,het,kap,sigma_true=False,plot=False,full_exp=F
     # unobserved indices
     ind_test_all = np.transpose(np.nonzero(S==0))
     n0 = ind_test_all.shape[0]
-    # randomly choose m of missing entries
-#     ind_test = ind_test_all[np.random.choice(n0,m),:]
     ind_test = ind_test_all
     
     # construct lower & upper bnds
     base2 = 'als'    # base algorithm
-    lo_als, up_als, r, qvals, M_cf_als, s_cf_als = CP_split_svd(A,ind_test,alpha,P,rk,wtd=True,het=het,w=[],oracle=False,base=base2,kap=kap)
-#     # oracle case: when P is known
-#     lo, up, _, _ = CP_split_svd(A,ind_test,alpha,P,rk,wtd=True,het=het,w=[],oracle=True,base=base)
-    
+    lo_als, up_als, r, qvals, M_cf_als, s_cf_als = cmc(A,ind_test,alpha,P,rk,wtd=True,het=het,w=[],oracle=False,base=base2,kap=kap)
+
     # model-based methods
     p_est = np.mean(S)
     u, s, vh = svds_(A/p_est, rk)
@@ -162,6 +172,9 @@ def cfmc_simu(alpha,rk,A,M_star,P,het,kap,sigma_true=False,plot=False,full_exp=F
     len_ave_als = np.round(np.mean((up_als - lo_als)),4)
     len_ave_uq_als = np.round(np.mean((up_uq_als - lo_uq_als)),4)
     
+    cov_rt_q = np.mean((lo_q <= m_star) & (up_q >= m_star))
+    len_ave_q = np.round(np.mean((up_q - lo_q)),4)
+    
     u_cf_als = np.divide((M_cf_als - M_star)[S==0],s_cf_als[S==0]).reshape(-1)
     u = np.random.normal(0,1,10000)
     u_hat_als = np.divide((Mhat_als - M_star)[S==0], s_als[S==0]).reshape(-1)
@@ -181,29 +194,13 @@ def cfmc_simu(alpha,rk,A,M_star,P,het,kap,sigma_true=False,plot=False,full_exp=F
         ax[1].legend(loc='best')
         ax[1].set_title('als')
 
-    #     # compare results with oracle and estimated P
-    #     ind = np.arange(250,300)
-    #     ind_seq = np.arange(len(ind))
-    #     ax[1].plot(ind_seq,m_star[ind],'b+',label='true entry')
-    #     ax[1].plot(ind_seq,lo[ind],label=label1,c='darkgreen')
-    #     ax[1].plot(ind_seq,up[ind],c='darkgreen')
-    #     ax[1].plot(ind_seq,lo_hat[ind],label=label2,c='red')
-    #     ax[1].plot(ind_seq,up_hat[ind],c='red')
-    #     ax[1].plot(ind_seq,lo_uq_cvx[ind],label=label3,c='cyan')
-    #     ax[1].plot(ind_seq,up_uq_cvx[ind],c='cyan')
-    #     ax[1].plot(ind_seq,lo_uq_als[ind],label=label4,c='orange')
-    #     ax[1].plot(ind_seq,up_uq_als[ind],c='orange')
-    #     ax[1].legend(loc='best', bbox_to_anchor=(1, 1))
-    #     ax[1].set_xlabel('index')
-    #     ax[1].set_ylabel('unobserved entries')
-    #     ax[1].set_title('Lower and upper bounds')
     
     if full_exp:
         base1 = 'cvx'    # base algorithm
         label1 = 'cf-'+base1
         label3 = 'cvx'
     
-        lo_cvx, up_cvx, r_, qvals_, M_cf_cvx, s_cf_cvx = CP_split_svd(A,ind_test,alpha,P,rk,wtd=True,het=het,w=[],oracle=False,base=base1,kap=kap)
+        lo_cvx, up_cvx, r_, qvals_, M_cf_cvx, s_cf_cvx = cmc(A,ind_test,alpha,P,rk,wtd=True,het=het,w=[],oracle=False,base=base1,kap=kap)
 
         # convex
         eta = 1
@@ -224,7 +221,7 @@ def cfmc_simu(alpha,rk,A,M_star,P,het,kap,sigma_true=False,plot=False,full_exp=F
         return cov_rt_cvx, cov_rt_als, cov_rt_uq_cvx, cov_rt_uq_als, len_ave_cvx, len_ave_als, len_ave_uq_cvx, len_ave_uq_als
     
     else:
-        return cov_rt_als, cov_rt_uq_als, len_ave_als, len_ave_uq_als
+        return cov_rt_als, cov_rt_uq_als, len_ave_als, len_ave_uq_als, 
         
     
 
@@ -234,6 +231,12 @@ def cfmc_simu_hetero(alpha,rk,A,M_star,P,het,kap,sigma_true=False,plot=False,ful
     
     d1, d2 = A.shape[0], A.shape[1]
     S = (A!=0)
+    
+    # empirical quantiles
+    a = A.ravel()
+    a = a[a!=0]
+    lo_q = np.quantile(a, alpha/2)
+    up_q = np.quantile(a, 1-alpha/2)
         
     # M_star: underlying true matrix
     # A: partially observed matrix
@@ -242,22 +245,20 @@ def cfmc_simu_hetero(alpha,rk,A,M_star,P,het,kap,sigma_true=False,plot=False,ful
     ind_test_all = np.transpose(np.nonzero(S==0))
     n0 = ind_test_all.shape[0]
     # randomly choose m of missing entries
-#     m = 500
-#     ind_test = ind_test_all[np.random.choice(n0,m),:]
     ind_test = ind_test_all
     
     # construct lower & upper bnds
     base2 = 'als'    # base algorithm
-    lo_als_hat, up_als_hat, r, qvals, _, _ = CP_split_svd(A,ind_test,alpha,P,rk,wtd=True,het=het,w=[],oracle=False,base=base2,kap=kap)
+    lo_als_hat, up_als_hat, r, qvals, _, _ = cmc(A,ind_test,alpha,P,rk,wtd=True,het=het,w=[],oracle=False,base=base2,kap=kap)
     
     # oracle case: when P is known
-    lo_als, up_als, _, _, _, _ = CP_split_svd(A,ind_test,alpha,P,rk,wtd=True,het=het,w=[],oracle=True,base=base2,kap=kap)
+    lo_als, up_als, _, _, _, _ = cmc(A,ind_test,alpha,P,rk,wtd=True,het=het,w=[],oracle=True,base=base2,kap=kap)
     
     if full_exp:
         base1 = 'cvx'    # base algorithm
-        lo_cvx_hat, up_cvx_hat, r_, qvals_, M_cf_cvx, s_cf_cvx = CP_split_svd(A,ind_test,alpha,P,rk,wtd=True,het=het,w=[],oracle=False,base=base1,kap=kap)
+        lo_cvx_hat, up_cvx_hat, r_, qvals_, M_cf_cvx, s_cf_cvx = cmc(A,ind_test,alpha,P,rk,wtd=True,het=het,w=[],oracle=False,base=base1,kap=kap)
         
-        lo_cvx, up_cvx, _, _, _, _ = CP_split_svd(A,ind_test,alpha,P,rk,wtd=True,het=het,w=[],oracle=True,base=base1,kap=kap)
+        lo_cvx, up_cvx, _, _, _, _ = cmc(A,ind_test,alpha,P,rk,wtd=True,het=het,w=[],oracle=True,base=base1,kap=kap)
         
         # evaluation
         m_star = []
@@ -272,10 +273,13 @@ def cfmc_simu_hetero(alpha,rk,A,M_star,P,het,kap,sigma_true=False,plot=False,ful
         cov_rt_als = np.mean((lo_als <= m_star) & (up_als >= m_star))
         cov_rt_cvx_hat = np.mean((lo_cvx_hat <= m_star) & (up_cvx_hat >= m_star))
         cov_rt_als_hat = np.mean((lo_als_hat <= m_star) & (up_als_hat >= m_star))
+        cov_rt_q = np.mean((lo_q <= m_star) & (up_q >= m_star))
+        
         len_ave_cvx = np.round(np.mean((up_cvx - lo_cvx)),4)
         len_ave_als = np.round(np.mean((up_als - lo_als)),4)
         len_ave_cvx_hat = np.round(np.mean((up_cvx_hat - lo_cvx_hat)),4)
         len_ave_als_hat = np.round(np.mean((up_als_hat - lo_als_hat)),4)
+        len_ave_q = np.round(np.mean((up_q - lo_q)),4)
         
         return cov_rt_cvx, cov_rt_als, cov_rt_cvx_hat, cov_rt_als_hat, len_ave_cvx, len_ave_als, len_ave_cvx_hat, len_ave_als_hat
         
@@ -288,7 +292,10 @@ def cfmc_simu_hetero(alpha,rk,A,M_star,P,het,kap,sigma_true=False,plot=False,ful
         # compute coverage rate and average length
         cov_rt_als = np.mean((lo_als <= m_star) & (up_als >= m_star))
         cov_rt_als_hat = np.mean((lo_als_hat <= m_star) & (up_als_hat >= m_star))
+        cov_rt_q = np.mean((lo_q <= m_star) & (up_q >= m_star))
+        
         len_ave_als = np.round(np.mean((up_als - lo_als)),4)
         len_ave_als_hat = np.round(np.mean((up_als_hat - lo_als_hat)),4)
+        len_ave_q = np.round(np.mean((up_q - lo_q)),4)
 
         return cov_rt_als, cov_rt_als_hat, len_ave_als, len_ave_als_hat
