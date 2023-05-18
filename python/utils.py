@@ -262,17 +262,14 @@ def weighted_quantile(v,prob,w):
         return v[np.min(i)]
     
 # conformalized matrix completion
-def cmc(M0, ind, alpha, P, rk, wtd, het, w, oracle, base, kap, verbose=False):
+def cmc(M0, S, ind, alpha, P, rk, wtd, het, w, oracle, base, verbose=False):
     # weights are used for computing quantiles for the prediction interval
 
     # ind: indices for unobserved entries
 
     d1, d2 = M0.shape
-    S = np.zeros((d1,d2))
     
     ind_nonzero = np.transpose(np.nonzero(M0))
-    S[ind_nonzero[:,0],ind_nonzero[:,1]] = 1
-    # can change the input to make S easier
 
 
     N = d1*d2
@@ -379,7 +376,7 @@ def cmc(M0, ind, alpha, P, rk, wtd, het, w, oracle, base, kap, verbose=False):
     dist = np.divide(np.abs(M_calib - M_hat), s_hat)
     
     # Cong: Check the weights
-    w_max = np.max((1-P_hat_)/P_hat_)
+    w_max = np.max(S*((1-P_hat_)/P_hat_))
     
     if((len(w)==0) & (wtd==False)):
         ww = np.ones(n_calib+1)

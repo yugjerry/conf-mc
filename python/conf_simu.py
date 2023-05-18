@@ -84,14 +84,12 @@ def gen_(d1,d2,het,sd,tail,pr,M_mean,mis_set,k_star):
 
     A = A + E * S
     M_star += E
-    assert M_star * S == A
-    return M_star, A, P
+    assert (M_star * S == A).all()
+    return M_star, A, P, S
 
-def cfmc_simu(alpha,rk,A,M_star,P,het,kap,sigma_true=False,plot=False,full_exp=False):
+def cfmc_simu(alpha,rk,A,S,M_star,P,het,plot=False,full_exp=False):
     
     d1, d2 = A.shape
-    # Cong: provide the actual locations, not compute it
-    S = (A!=0)
     
     # empirical quantiles
     a = A.ravel()
@@ -109,7 +107,7 @@ def cfmc_simu(alpha,rk,A,M_star,P,het,kap,sigma_true=False,plot=False,full_exp=F
     
     # construct lower & upper bnds
     base2 = 'als'    # base algorithm
-    lo_als, up_als, r, qvals, M_cf_als, s_cf_als = cmc(A,ind_test,alpha,P,rk,wtd=True,het=het,w=[],oracle=False,base='als',kap=kap)
+    lo_als, up_als, r, qvals, M_cf_als, s_cf_als = cmc(A,S,ind_test,alpha,P,rk,wtd=True,het=het,w=[],oracle=False,base='als')
 
     # model-based methods
     p_est = np.mean(S)
@@ -174,7 +172,7 @@ def cfmc_simu(alpha,rk,A,M_star,P,het,kap,sigma_true=False,plot=False,full_exp=F
         label1 = 'cf-'+base1
         label3 = 'cvx'
     
-        lo_cvx, up_cvx, r_, qvals_, M_cf_cvx, s_cf_cvx = cmc(A,ind_test,alpha,P,rk,wtd=True,het=het,w=[],oracle=False,base=base1,kap=kap)
+        lo_cvx, up_cvx, r_, qvals_, M_cf_cvx, s_cf_cvx = cmc(A,S,ind_test,alpha,P,rk,wtd=True,het=het,w=[],oracle=False,base=base1)
 
         # convex
         eta = 1
@@ -187,24 +185,23 @@ def cfmc_simu(alpha,rk,A,M_star,P,het,kap,sigma_true=False,plot=False,full_exp=F
         lo_uq_cvx = lo_uq_mat[S==0].reshape(-1)
         up_uq_cvx = up_uq_mat[S==0].reshape(-1)
         
-        cov_rt_cvx = np.mean((lo_cvx <= m_star) & (up_cvx >= m_star))
-        cov_rt_uq_cvx = np.mean((lo_uq_cvx <= m_star) & (up_uq_cvx >= m_star))
-        len_ave_cvx = np.round(np.mean((up_cvx - lo_cvx)),4)
-        len_ave_uq_cvx = np.round(np.mean((up_uq_cvx - lo_uq_cvx)),4)
+        coverage_cmc_cvx = np.mean((lo_cvx <= m_star) & (up_cvx >= m_star))
+        coverage_cvx = np.mean((lo_uq_cvx <= m_star) & (up_uq_cvx >= m_star))
+        length_cmc_cvx = np.round(np.mean((up_cvx - lo_cvx)),4)
+        length_cvx = np.round(np.mean((up_uq_cvx - lo_uq_cvx)),4)
         
-        return cov_rt_cvx, coverage_cmc_als, cov_rt_uq_cvx, coverage_als, len_ave_cvx, length_cmc_als, len_ave_uq_cvx, length_als
+        return coverage_cmc_cvx, coverage_cmc_als, coverage_cvx, coverage_als, length_cmc_cvx, length_cmc_als, length_cvx, length_als
     
     else:
-        return coverage_cmc_als, coverage_als, length_cmc_als, length_als, 
+        return coverage_cmc_als, coverage_als, length_cmc_als, length_als
         
     
 
 
 
-def cfmc_simu_hetero(alpha,rk,A,M_star,P,het,kap,sigma_true=False,plot=False,full_exp=False):
+def cfmc_simu_hetero(alpha,rk,A,S,M_star,P,het,full_exp=False):
     
     d1, d2 = A.shape[0], A.shape[1]
-    S = (A!=0)
     
     # empirical quantiles
     a = A.ravel()
@@ -223,16 +220,16 @@ def cfmc_simu_hetero(alpha,rk,A,M_star,P,het,kap,sigma_true=False,plot=False,ful
     
     # construct lower & upper bnds
     base2 = 'als'    # base algorithm
-    lo_als_hat, up_als_hat, r, qvals, _, _ = cmc(A,ind_test,alpha,P,rk,wtd=True,het=het,w=[],oracle=False,base=base2,kap=kap)
+    lo_als_hat, up_als_hat, r, qvals, _, _ = cmc(A,S,ind_test,alpha,P,rk,wtd=True,het=het,w=[],oracle=False,base=base2)
     
     # oracle case: when P is known
-    lo_als, up_als, _, _, _, _ = cmc(A,ind_test,alpha,P,rk,wtd=True,het=het,w=[],oracle=True,base=base2,kap=kap)
+    lo_als, up_als, _, _, _, _ = cmc(A,S,ind_test,alpha,P,rk,wtd=True,het=het,w=[],oracle=True,base=base2)
     
     if full_exp:
         base1 = 'cvx'    # base algorithm
-        lo_cvx_hat, up_cvx_hat, r_, qvals_, M_cf_cvx, s_cf_cvx = cmc(A,ind_test,alpha,P,rk,wtd=True,het=het,w=[],oracle=False,base=base1,kap=kap)
+        lo_cvx_hat, up_cvx_hat, r_, qvals_, M_cf_cvx, s_cf_cvx = cmc(A,S,ind_test,alpha,P,rk,wtd=True,het=het,w=[],oracle=False,base=base1)
         
-        lo_cvx, up_cvx, _, _, _, _ = cmc(A,ind_test,alpha,P,rk,wtd=True,het=het,w=[],oracle=True,base=base1,kap=kap)
+        lo_cvx, up_cvx, _, _, _, _ = cmc(A,S,ind_test,alpha,P,rk,wtd=True,het=het,w=[],oracle=True,base=base1)
         
         # evaluation
         m_star = []
@@ -243,19 +240,19 @@ def cfmc_simu_hetero(alpha,rk,A,M_star,P,het,kap,sigma_true=False,plot=False,ful
         label3 = 'cf-'+base1
         label4 = 'cf-'+base2
         # compute coverage rate and average length
-        cov_rt_cvx = np.mean((lo_cvx <= m_star) & (up_cvx >= m_star))
+        coverage_cmc_cvx = np.mean((lo_cvx <= m_star) & (up_cvx >= m_star))
         coverage_cmc_als = np.mean((lo_als <= m_star) & (up_als >= m_star))
-        cov_rt_cvx_hat = np.mean((lo_cvx_hat <= m_star) & (up_cvx_hat >= m_star))
+        coverage_cmc_cvx_hat = np.mean((lo_cvx_hat <= m_star) & (up_cvx_hat >= m_star))
         coverage_cmc_als_hat = np.mean((lo_als_hat <= m_star) & (up_als_hat >= m_star))
        
         
-        len_ave_cvx = np.round(np.mean((up_cvx - lo_cvx)),4)
+        length_cmc_cvx = np.round(np.mean((up_cvx - lo_cvx)),4)
         length_cmc_als = np.round(np.mean((up_als - lo_als)),4)
-        len_ave_cvx_hat = np.round(np.mean((up_cvx_hat - lo_cvx_hat)),4)
+        length_cmc_cvx_hat = np.round(np.mean((up_cvx_hat - lo_cvx_hat)),4)
         length_cmc_als_hat = np.round(np.mean((up_als_hat - lo_als_hat)),4)
         len_ave_q = np.round(np.mean((up_q - lo_q)),4)
         
-        return cov_rt_cvx, coverage_cmc_als, cov_rt_cvx_hat, coverage_cmc_als_hat, len_ave_cvx, length_cmc_als, len_ave_cvx_hat, length_cmc_als_hat
+        return coverage_cmc_cvx, coverage_cmc_als, coverage_cmc_cvx_hat, coverage_cmc_als_hat, length_cmc_cvx, length_cmc_als, length_cmc_cvx_hat, length_cmc_als_hat
         
     else:
     
@@ -270,6 +267,5 @@ def cfmc_simu_hetero(alpha,rk,A,M_star,P,het,kap,sigma_true=False,plot=False,ful
         
         length_cmc_als = np.round(np.mean((up_als - lo_als)),4)
         length_cmc_als_hat = np.round(np.mean((up_als_hat - lo_als_hat)),4)
-        len_ave_q = np.round(np.mean((up_q - lo_q)),4)
 
         return coverage_cmc_als, coverage_cmc_als_hat, length_cmc_als, length_cmc_als_hat
