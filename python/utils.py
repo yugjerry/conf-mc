@@ -76,88 +76,68 @@ def logis(data, theta, beta, q=1, tau = 0.3, tol = 0.1):
     return theta, beta
 
 # generate (low-rank) matrix M^*
-def mat_gen(d1,d2,P,k,M_mean):
-
+def mat_gen(d1,d2,P,k,M_mean=2):
     U = np.random.normal(0,1,d1*k).reshape((d1,k))
     V = np.random.normal(0,1,d2*k).reshape((d2,k))
     U = scilinalg.orth(U)
     V = scilinalg.orth(V)
-    s = np.ones(k)
     
-    M_star = U@np.diag(s)@V.T
-    M_star = M_star/np.mean(np.abs(M_star)) * M_mean
-    
+    M_star = U @ V.T
+    M_star = M_star / np.mean(np.abs(M_star)) * M_mean
     S = np.less(np.random.rand(d1,d2), P)
     M = M_star * S
     
     return M_star, M, S
 
-def mat_gen_mis(d1,d2,P,k,M_mean):
-    
+
+def mat_gen_mis(d1,d2,P,k,M_mean=2):
     U = np.random.standard_t(1.2, size=d1*k).reshape((d1,k))
     V = np.random.standard_t(1.2, size=d2*k).reshape((d2,k))
-    
     U = scilinalg.orth(U)
     V = scilinalg.orth(V)
-    s = np.ones(k)
     
-    M_star = U@np.diag(s)@V.T
+    M_star = U @ V.T
     M_star = M_star/np.mean(np.abs(M_star)) * M_mean
-    
     S = np.less(np.random.rand(d1,d2), P)
     M = M_star * S
     
     return M_star, M, S
 
-def mat_gen_mis_(d1,d2,P,k,M_mean):
-    U = np.random.normal(0,1,d1*k).reshape((d1,k))
-    V = np.random.normal(0,1,d2*k).reshape((d2,k))
-    
-    U = scilinalg.orth(U)
-    V = scilinalg.orth(V)
-    s = np.ones(k)
-    
-    M_star = U@np.diag(s)@V.T
-    M_star = M_star/np.mean(np.abs(M_star)) * M_mean
-    
-    S = np.less(np.random.rand(d1,d2), P)
-    M = M_star * S
-    
-    return M_star, M, S
 
-# recovery via low-rank svd
-def low_rk_svd(M_,P_inv,k):
-    u_k, s_k, vt_k = scilinalg.svd(M_ * P_inv, full_matrices=False)
-    u_k = u_k[:,:k]
-    s_k = s_k[:k]
-    vt_k = vt_k[:k,:]
+# recovery via spectral method
+def low_rk_svd(M_, P_inv, k):
+    u, s, vt = scilinalg.svd(M_ * P_inv, full_matrices=False)
+    u_k = u[:,:k]
+    s_k = s[:k]
+    vt_k = vt[:k,:]
     M_hat = u_k @ np.diag(s_k) @ vt_k
     return M_hat
 
+# Cong: check whether this is used.
 def svds_(M_,k):
-    u_k, s_k, vt_k = scilinalg.svd(M_, full_matrices=False)
-    u_k = u_k[:,:k]
-    s_k = s_k[:k]
-    vt_k = vt_k[:k,:]
+    u, s, vt = scilinalg.svd(M_, full_matrices=False)
+    u_k = u[:,:k]
+    s_k = s[:k]
+    vt_k = vt[:k,:]
     return u_k, s_k, vt_k
 
-# nonconvex matrix completion
+
+# singular value thresholding
 def SVT(X, tau):
-    U,S,Vh = np.linalg.svd(X, full_matrices=False)
+    U,S,Vh = scilinalg.svd(X, full_matrices=False)
     S = np.maximum(S-tau, np.zeros(len(S)))
-    Z = U@np.diag(S)@Vh
+    Z = U @ np.diag(S) @ Vh
     return Z
 
 def cvx_mc(A, S, p_est, rk, sigma_est, lam=0, eta=0.1, max_iter=1000):
     # eta: learning rate
     # max_iter: max number of iterations
-    # lam: regularization; default = 0 for nonconvex approach
     d1, d2 = A.shape
-    u, s, vh = svds_(A/p_est, rk)
+    u, s, vh = svds_(A / p_est, rk)
     v = vh.T
-    M_spectral = u@np.diag(s)@vh
-    X = u@np.diag(np.sqrt(s))
-    Y = v@np.diag(np.sqrt(s))
+    M_spectral = u @ np.diag(s) @ vh
+    X = u @ np.diag(np.sqrt(s))
+    Y = v @ np.diag(np.sqrt(s))
     
     # estimate sigma
     function_value_old = 10000
@@ -181,10 +161,10 @@ def cvx_mc(A, S, p_est, rk, sigma_est, lam=0, eta=0.1, max_iter=1000):
         sigma_est = np.linalg.norm((Z_prox-A)*S,'fro')/np.sqrt(d1*d2*p_est)
     
     # convex relaxation
-    lam = 2*sigma_est*np.sqrt(max(d1,d2)*p_est)
+    lam = 2 * sigma_est * np.sqrt(max(d1,d2) * p_est)
     Z_prox = M_spectral
     for t in range(max_iter):
-        Z_new = SVT(Z_prox-eta*(Z_prox-A)*S,lam*eta)
+        Z_new = SVT( Z_prox - eta*(Z_prox-A) * S, lam * eta)
         grad_norm = np.linalg.norm((Z_new-Z_prox)/eta,'fro')/np.linalg.norm(Z_prox,'fro')
         Z_prox = Z_new
         if grad_norm < 1e-8:
@@ -219,12 +199,10 @@ def cvx_mc(A, S, p_est, rk, sigma_est, lam=0, eta=0.1, max_iter=1000):
     
     
 def ALS_solve(M, Ω, r, mu, epsilon=1e-3, max_iterations=100, debug = False):
-    
-    #logger = logging.getLogger(__name__)
-    n1, n2 = M.shape
-    U = np.random.randn(n1, r)
-    V = np.random.randn(n2, r)
-    prev_X = np.dot(U, V.T)
+    d1, d2 = M.shape
+    U = np.random.randn(d1, r)
+    V = np.random.randn(d2, r)
+    prev_X = U @ V.T
     
     def solve(M, U, Ω):
         V = np.zeros((M.shape[1], r))
@@ -232,27 +210,23 @@ def ALS_solve(M, Ω, r, mu, epsilon=1e-3, max_iterations=100, debug = False):
         for j in range(M.shape[1]):
             X1 = Ω[:, j:j+1].copy() * U
             X2 = X1.T @ X1 + mu_I
-#             V[j] = (np.linalg.pinv(X2, rcond=1e-4) @ X1.T @ (M[:, j:j+1].copy())).T
+
             V[j] = (np.linalg.pinv(X2, rcond=1e-3) @ X1.T @ (M[:, j:j+1].copy())).T
-            #print(M[:, j:j+1].shape)
-#             V[j] = np.linalg.solve(X2, X1.T @ (M[:, j:j+1].copy())).reshape(-1)
+
         return V
 
     for _ in range(max_iterations):
         U = solve(M.T, V, Ω.T)
         V = solve(M, U, Ω)
-        X = np.dot(U, V.T)
+        X = U @ V.T
         mean_diff = np.linalg.norm(X - prev_X) / np.linalg.norm(X)
-        #if _ % 1 == 0:
-        #    logger.info("Iteration: %i; Mean diff: %.4f" % (_ + 1, mean_diff))
-        if (debug):
+        if debug:
             print("Iteration: %i; Mean diff: %.4f" % (_ + 1, mean_diff))
-        
         if mean_diff < epsilon:
             break
         prev_X = X
                     
-    sigma_X = np.sqrt(np.sum(((M-X)*Ω)**2)/np.sum(Ω))
+    sigma_X = np.sqrt(np.sum(((M - X) * Ω)**2) / np.sum(Ω))
     v_X = compute_Sigma_gaussian(X, r, np.mean(Ω), sigma_X)
                     
     return X, sigma_X, v_X
@@ -273,16 +247,6 @@ def compute_Sigma_gaussian(Mhat, r, p_observe, sigma_est):
 
     return sigmaS
 
-def compute_Sigma_adaptive(Mhat, E, r, p_observe):
-    u,s,vh = np.linalg.svd(Mhat, full_matrices=False)
-    U = u[:, :r]
-    V = vh[:r, :].T
-
-    sigmaS = ((U.dot(U.T))**2).dot(E**2) + (E**2).dot((V.dot(V.T))**2)
-    sigmaS /= (p_observe**2)
-    sigmaS = np.sqrt(sigmaS)
-
-    return sigmaS
 
 # defined functions for conformal prediction
 def weighted_quantile(v,prob,w):
@@ -298,39 +262,48 @@ def weighted_quantile(v,prob,w):
         return v[np.min(i)]
     
 # conformalized matrix completion
-def cmc(M0,ind,alpha,P,rk,wtd,het,w,oracle,base,kap,verbose=False):
+def cmc(M0, ind, alpha, P, rk, wtd, het, w, oracle, base, kap, verbose=False):
     # weights are used for computing quantiles for the prediction interval
+
+    # ind: indices for unobserved entries
+
     d1, d2 = M0.shape
     S = np.zeros((d1,d2))
+    
     ind_nonzero = np.transpose(np.nonzero(M0))
     S[ind_nonzero[:,0],ind_nonzero[:,1]] = 1
-    
+    # can change the input to make S easier
+
+
     N = d1*d2
     n = int(np.sum(S))
-    n0 = ind.shape[0]
+    n0 = ind.shape[0] # number of unobserved entries
 
-    lo = np.zeros(n0)
-    up = np.zeros(n0)
+    lo, up = np.zeros(n0), np.zeros(n0)
     
     # split
-    p_split = 0.8
+    q = 0.8
     a = np.random.rand(ind_nonzero.shape[0])
-    mask = a<=p_split
+    mask = a<=q 
     ind_train = ind_nonzero[mask,:]    # training set
     ind_calib = ind_nonzero[~mask,:]   # calibration set
     n_train = np.sum(mask)
-    n_calib = n-n_train
+    n_calib = n - n_train
     M_calib = np.copy(M0)
     M_train = np.copy(M0)
     M_train[ind_calib[:,0],ind_calib[:,1]] = 0
+    
+    # Cong: this needs to be changed
     S_train = M_train!=0
     
     # apply mc algorithm 
     # estimate P
-    if ((oracle==False) and (wtd==True)):
+    if oracle:
+        P_hat_ = P
+    elif wtd: 
         if het=='homo':
-            P_hat_ = (1/p_split)*np.mean(S_train)*np.ones(d1*d2).reshape((d1,d2))
-            P_lo_ = P_hat_
+            P_hat_ = (1/q )*np.mean(S_train)*np.ones(d1*d2).reshape((d1,d2))
+        
         if het == 'logis1' or het == 'logis2':
             yy = 2*(S_train-0.5).ravel()
             x_init = np.zeros(N)
@@ -341,8 +314,8 @@ def cmc(M0,ind,alpha,P,rk,wtd,het,w,oracle,base,kap,verbose=False):
             else:
                 k_l = 1
             radius  = const * np.sqrt(d1*d2*k_l)
-            f_loc = lambda x: f_(x,p_split)
-            fprime_loc = lambda x: fprime(x,p_split)
+            f_loc = lambda x: f_(x,q )
+            fprime_loc = lambda x: fprime(x,q )
             funObj  = lambda x_var: logObjectiveGeneral(x_var,yy,idx,f_loc,fprime_loc)
             funProj = lambda x_var: projectNuclear(x_var,d1,d2,radius,const)
 
@@ -365,61 +338,56 @@ def cmc(M0,ind,alpha,P,rk,wtd,het,w,oracle,base,kap,verbose=False):
             U,s_hat,Vh = np.linalg.svd(A_hat)
             k_p = 2
             M_d = U[:,:k_p]@np.diag(s_hat[:k_p])@Vh[:k_p,:]
-            P_hat_ = (1/p_split)*f_(M_d,p_split).reshape((d1,d2))
-            P_lo_ = P_hat_
+            P_hat_ = (1/q )*f_(M_d,q ).reshape((d1,d2))
+        
             
         if het=='rank1':
             u_hat, s_hat, vt_hat = svds_(S_train,1)
-            P_hat_ = (1/p_split)*u_hat @ np.diag(s_hat) @ vt_hat
-            P_lo_ = P_hat_
+            P_hat_ = (1/q )*u_hat @ np.diag(s_hat) @ vt_hat
+            
             
         if het=='logis':
             y_mat = S_train.astype(int)
             theta_int = np.random.uniform(-1,1,d1).reshape((d1,1))
             theta_int = theta_int - np.mean(theta_int)
             beta_int = np.random.uniform(-1,1,d2).reshape((d2,1))
-            theta, beta = logis(y_mat, theta_int, beta_int, p_split)
+            theta, beta = logis(y_mat, theta_int, beta_int, q )
             M_d = theta @ np.ones(d2).reshape(1,d2) + np.ones(d1).reshape(d1,1) @ beta.T
             P_hat_ = 1/(1+np.exp(-M_d))
-            P_lo_ = P_hat_
             
-    elif oracle==True:
-        P_hat_ = P
-        P_lo_ = P
     else:
-    	P_hat_ = (1/p_split)*np.mean(S_train)*np.ones(d1*d2).reshape((d1,d2))
+    	P_hat_ = (1/q )*np.mean(S_train)*np.ones(d1*d2).reshape((d1,d2))
 
     # apply mc algorithm
     # spectral initialization
-    P_inv = 1/P_hat_
+    P_inv = 1 / P_hat_
     p_est1 = np.mean(S_train)
+
     # estimated standard deviation
-    u_,s_,vh_ = svds_((1/p_split)*M_train*P_inv, rk)
-    M_spec = u_@np.diag(s_)@vh_
+    u_, s_, vh_ = svds_((1/q) * M_train * P_inv, rk)
+    M_spec = u_ @ np.diag(s_) @ vh_
+
     sigma_est_spec = np.sqrt(np.sum(((M_train-M_spec)*S_train)**2)/np.sum(S_train))
     
-    if base=='als':
-        penalty = 0.0
-        M_hat,sigma_est,sigmaS = ALS_solve(M_train, S_train, rk, penalty)
-
-        s_hat = np.sqrt(sigmaS**2+kap*sigma_est**2)
-    if base=='cvx':
+    if base=='als': 
+        M_hat, sigma_est, sigmaS = ALS_solve(M_train, S_train, rk, 0)
+        
+    elif base=='cvx':
         M_hat,X_d_,Y_d_,sigma_est,sigmaS = cvx_mc(M_train, S_train, p_est1, rk, sigma_est_spec, eta=1)
-        s_hat = np.sqrt(sigmaS**2+kap*sigma_est**2)
-    if base=='svd':
-        M_hat = low_rk_svd(M_train,P_inv,rk)
-        s_hat = np.abs(M_hat)
+    s_hat = np.sqrt(sigmaS**2 + sigma_est**2)
     
-    dist = np.divide(np.abs(M_calib-M_hat), s_hat)
-    # Check the weights
-    w_max = np.max((1-P_lo_)/P_lo_)
+    dist = np.divide(np.abs(M_calib - M_hat), s_hat)
+    
+    # Cong: Check the weights
+    w_max = np.max((1-P_hat_)/P_hat_)
+    
     if((len(w)==0) & (wtd==False)):
         ww = np.ones(n_calib+1)
     elif((len(w)==0) & (wtd==True)):
         ww = np.zeros(n_calib+1)
         for j in range(n_calib):
-            pi = P_lo_[ind_calib[j,0],ind_calib[j,1]]
-            ww[j] = (1-pi)/pi
+            pi = P_hat_[ind_calib[j,0],ind_calib[j,1]]
+            ww[j] = (1-pi) / pi
         ww[n_calib] = w_max
     else:
         ww = w

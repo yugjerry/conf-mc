@@ -18,43 +18,51 @@ from utils import *
 
 
 def gen_(d1,d2,het,sd,tail,pr,M_mean,mis_set,k_star):
+    '''
+    The code defines a function called gen_ that generates a synthetic matrix with missing values. The function takes several parameters:
+    
+    d1: Number of rows in the matrix.
+    d2: Number of columns in the matrix.
+    het: Type of missingness pattern ('rank1', 'logis1', 'logis', 'logis2', 'homo').
+    sd: Standard deviation of the noise.
+    tail: Type of noise distribution ('exp', 'cauchy', 'gaussian', 'poisson', 't', 'het', 'het1').
+    pr: Probability of missingness for homogeneous missingness.
+    M_mean: Mean value of the true matrix.
+    mis_set: Flag to indicate whether missing values should be generated according to the missingness pattern.
+    k_star: Rank of the true matrix.
+    '''
+
     N = d1*d2
     d = d1+d2
 
-    # missingness pattern
-    if het=='rank1':
-        # rank-1 structure
-        lo_p = 0.3
-        up_p = 0.9
-        u = np.random.uniform(lo_p,up_p,d1).reshape((d1,1))
-        v = np.random.uniform(lo_p,up_p,d2).reshape((d2,1))
-        P = u @ v.T
-    elif het == 'logis1':
-        L = 0.5
-        k_p = 5
-        u = L*np.random.uniform(0,2,d1*k_p).reshape((d1,k_p))
-        v = L*np.random.uniform(-1,1,d2*k_p).reshape((d2,k_p))
-        AA = u @ v.T
-        P = 1/(1+np.exp(-AA))
-    elif het == 'logis':
-        L = 1
-        u = L*np.random.uniform(-1,1,d1).reshape((d1,1))
-        v = L*np.random.uniform(-1,1,d2).reshape((d2,1))
-        o1 = np.ones((d1,1))
-        o2 = np.ones((d2,1))
-        AA = u[:,:1]@o2.T + o1@v[:,:1].T
-        P = 1/(1+np.exp(-AA))
-    elif het == 'logis2':
-        L = 0.5
-        k_l = 1
-        u = L*np.random.uniform(0,2,d1*k_l).reshape((d1,k_l))
-        v = L*np.random.uniform(-1,1,d2*k_l).reshape((d2,k_l))
-        AA = u@v.T
-        P = 1/(1+np.exp(-AA))
-    elif het == 'homo':
-        # homogeneous missingness
-        pr = pr
-        P = pr * np.ones(N).reshape((d1,d2))
+    def gen_P(het):
+        # missingness pattern
+        if het=='rank1':
+            # rank-1 structure
+            lo_p = 0.3
+            up_p = 0.9
+            u = np.random.uniform(lo_p,up_p,d1).reshape((d1,1))
+            v = np.random.uniform(lo_p,up_p,d2).reshape((d2,1))
+            P = u @ v.T
+        elif het == 'logis1':
+            L = 0.5
+            k_p = 5
+            u = L*np.random.uniform(0,2,d1*k_p).reshape((d1,k_p))
+            v = L*np.random.uniform(-1,1,d2*k_p).reshape((d2,k_p))
+            AA = u @ v.T
+            P = 1/(1+np.exp(-AA))
+        elif het == 'logis2':
+            L = 0.5
+            k_l = 1
+            u = L*np.random.uniform(0,2,d1*k_l).reshape((d1,k_l))
+            v = L*np.random.uniform(-1,1,d2*k_l).reshape((d2,k_l))
+            AA = u@v.T
+            P = 1/(1+np.exp(-AA))
+        elif het == 'homo':
+            
+            P = pr * np.ones((d1,d2))
+        return P
+    P = gen_P(het)
 
     if mis_set == 1:
         M_star, A, S = mat_gen_mis(d1,d2,P,k_star,M_mean)
@@ -62,59 +70,27 @@ def gen_(d1,d2,het,sd,tail,pr,M_mean,mis_set,k_star):
         M_star, A, S = mat_gen(d1,d2,P,k_star,M_mean)
     
     # tails
-    if tail == 'exp':
-        E = sd * np.random.exponential(size=d1*d2).reshape((d1,d2))
-    if tail == 'cauchy':
-        E = sd * np.random.standard_cauchy(d1*d2).reshape((d1,d2))
+
     if tail == 'gaussian':
         E = np.random.normal(0,sd,d1*d2).reshape((d1,d2))
-    if tail == 'poisson':
-        M_p = np.random.poisson(M_star)
-        E = M_p - M_star
     if tail == 't':
         E = sd * np.random.standard_t(1.2, size=d1*d2).reshape((d1,d2))
     if tail == 'het':
         E = np.random.normal(0,(0.5/P).ravel(),d1*d2).reshape((d1,d2))
     if tail == 'het1':
-        if het=='rank1':
-            # rank-1 structure
-            lo_p = 0.3
-            up_p = 0.9
-            u = np.random.uniform(lo_p,up_p,d1).reshape((d1,1))
-            v = np.random.uniform(lo_p,up_p,d2).reshape((d2,1))
-            Q = u @ v.T
-        elif het == 'logis1':
-            u = L*np.random.uniform(0,2,d1*k_p).reshape((d1,k_p))
-            v = L*np.random.uniform(-1,1,d2*k_p).reshape((d2,k_p))
-            AA = u @ v.T
-            Q = 1/(1+np.exp(-AA))
-        elif het == 'logis':
-            L = 1
-            u = L*np.random.uniform(-1,1,d1).reshape((d1,1))
-            v = L*np.random.uniform(-1,1,d2).reshape((d2,1))
-            o1 = np.ones((d1,1))
-            o2 = np.ones((d2,1))
-            AA = u[:,:1]@o2.T + o1@v[:,:1].T
-            Q = 1/(1+np.exp(-AA))
-        elif het == 'logis2':
-            u = L*np.random.uniform(0,2,d1*k_l).reshape((d1,k_l))
-            v = L*np.random.uniform(-1,1,d2*k_l).reshape((d2,k_l))
-            AA = u@v.T
-            Q = 1/(1+np.exp(-AA))
-        elif het == 'homo':
-            # homogeneous missingness
-            pr = pr
-            Q = pr * np.ones(N).reshape((d1,d2))
+        Q = gen_P(het)
         E = np.random.normal(0,(0.5/Q).ravel(),d1*d2).reshape((d1,d2))
         
+
     A = A + E * S
     M_star += E
-    
+    assert M_star * S == A
     return M_star, A, P
 
 def cfmc_simu(alpha,rk,A,M_star,P,het,kap,sigma_true=False,plot=False,full_exp=False):
     
-    d1, d2 = A.shape[0], A.shape[1]
+    d1, d2 = A.shape
+    # Cong: provide the actual locations, not compute it
     S = (A!=0)
     
     # empirical quantiles
@@ -133,21 +109,20 @@ def cfmc_simu(alpha,rk,A,M_star,P,het,kap,sigma_true=False,plot=False,full_exp=F
     
     # construct lower & upper bnds
     base2 = 'als'    # base algorithm
-    lo_als, up_als, r, qvals, M_cf_als, s_cf_als = cmc(A,ind_test,alpha,P,rk,wtd=True,het=het,w=[],oracle=False,base=base2,kap=kap)
+    lo_als, up_als, r, qvals, M_cf_als, s_cf_als = cmc(A,ind_test,alpha,P,rk,wtd=True,het=het,w=[],oracle=False,base='als',kap=kap)
 
     # model-based methods
     p_est = np.mean(S)
     u, s, vh = svds_(A/p_est, rk)
-    M_spectral = u@np.diag(s)@vh
-    sigma_est_spec = np.sqrt(np.sum(((A-M_spectral)*S)**2)/(d1*d2*p_est))
+    M_spectral = u @ np.diag(s) @ vh
+    sigma_est_spec = np.sqrt(np.sum((( A - M_spectral)*S)**2)/(d1*d2*p_est))
     
     
-    # alternative least squares
-    penalty = 0.0
-    Mhat_als, sigma_est_als, sigmaS_als = ALS_solve(A, S, rk, penalty)
+    # alternating least squares
+    Mhat_als, sigma_est_als, sigmaS_als = ALS_solve(A, S, rk, 0.0)
     itn = 0
-    while (np.linalg.norm(Mhat_als-M_star) / np.linalg.norm(M_star) > 1) and (itn <= 5):
-        Mhat_als, sigma_est_als, sigmaS_als = ALS_solve(A, S, rk, penalty)
+    while (np.linalg.norm((Mhat_als - M_star) * S) / np.linalg.norm(M_star * S) > 1) and (itn <= 5):
+        Mhat_als, sigma_est_als, sigmaS_als = ALS_solve(A, S, rk, 0.0)
         itn += 1
         
     s_als = np.sqrt(sigmaS_als**2 + sigma_est_als**2)
@@ -164,16 +139,15 @@ def cfmc_simu(alpha,rk,A,M_star,P,het,kap,sigma_true=False,plot=False,full_exp=F
     for i in range(ind_test.shape[0]):
         m_star = np.append(m_star, M_star[ind_test[i,0],ind_test[i,1]])
 
-    label2 = 'cf-'+base2
+    label2 = 'cmc-als'
     label4 = 'als'
     # compute coverage rate and average length
-    cov_rt_als = np.mean((lo_als <= m_star) & (up_als >= m_star))
-    cov_rt_uq_als = np.mean((lo_uq_als <= m_star) & (up_uq_als >= m_star))
-    len_ave_als = np.round(np.mean((up_als - lo_als)),4)
-    len_ave_uq_als = np.round(np.mean((up_uq_als - lo_uq_als)),4)
+    coverage_cmc_als = np.mean((lo_als <= m_star) & (up_als >= m_star))
+    coverage_als = np.mean((lo_uq_als <= m_star) & (up_uq_als >= m_star))
+    length_cmc_als = np.round(np.mean((up_als - lo_als)),4)
+    length_als = np.round(np.mean((up_uq_als - lo_uq_als)),4)
     
-    cov_rt_q = np.mean((lo_q <= m_star) & (up_q >= m_star))
-    len_ave_q = np.round(np.mean((up_q - lo_q)),4)
+
     
     u_cf_als = np.divide((M_cf_als - M_star)[S==0],s_cf_als[S==0]).reshape(-1)
     u = np.random.normal(0,1,10000)
@@ -218,10 +192,10 @@ def cfmc_simu(alpha,rk,A,M_star,P,het,kap,sigma_true=False,plot=False,full_exp=F
         len_ave_cvx = np.round(np.mean((up_cvx - lo_cvx)),4)
         len_ave_uq_cvx = np.round(np.mean((up_uq_cvx - lo_uq_cvx)),4)
         
-        return cov_rt_cvx, cov_rt_als, cov_rt_uq_cvx, cov_rt_uq_als, len_ave_cvx, len_ave_als, len_ave_uq_cvx, len_ave_uq_als
+        return cov_rt_cvx, coverage_cmc_als, cov_rt_uq_cvx, coverage_als, len_ave_cvx, length_cmc_als, len_ave_uq_cvx, length_als
     
     else:
-        return cov_rt_als, cov_rt_uq_als, len_ave_als, len_ave_uq_als, 
+        return coverage_cmc_als, coverage_als, length_cmc_als, length_als, 
         
     
 
@@ -270,18 +244,18 @@ def cfmc_simu_hetero(alpha,rk,A,M_star,P,het,kap,sigma_true=False,plot=False,ful
         label4 = 'cf-'+base2
         # compute coverage rate and average length
         cov_rt_cvx = np.mean((lo_cvx <= m_star) & (up_cvx >= m_star))
-        cov_rt_als = np.mean((lo_als <= m_star) & (up_als >= m_star))
+        coverage_cmc_als = np.mean((lo_als <= m_star) & (up_als >= m_star))
         cov_rt_cvx_hat = np.mean((lo_cvx_hat <= m_star) & (up_cvx_hat >= m_star))
-        cov_rt_als_hat = np.mean((lo_als_hat <= m_star) & (up_als_hat >= m_star))
-        cov_rt_q = np.mean((lo_q <= m_star) & (up_q >= m_star))
+        coverage_cmc_als_hat = np.mean((lo_als_hat <= m_star) & (up_als_hat >= m_star))
+       
         
         len_ave_cvx = np.round(np.mean((up_cvx - lo_cvx)),4)
-        len_ave_als = np.round(np.mean((up_als - lo_als)),4)
+        length_cmc_als = np.round(np.mean((up_als - lo_als)),4)
         len_ave_cvx_hat = np.round(np.mean((up_cvx_hat - lo_cvx_hat)),4)
-        len_ave_als_hat = np.round(np.mean((up_als_hat - lo_als_hat)),4)
+        length_cmc_als_hat = np.round(np.mean((up_als_hat - lo_als_hat)),4)
         len_ave_q = np.round(np.mean((up_q - lo_q)),4)
         
-        return cov_rt_cvx, cov_rt_als, cov_rt_cvx_hat, cov_rt_als_hat, len_ave_cvx, len_ave_als, len_ave_cvx_hat, len_ave_als_hat
+        return cov_rt_cvx, coverage_cmc_als, cov_rt_cvx_hat, coverage_cmc_als_hat, len_ave_cvx, length_cmc_als, len_ave_cvx_hat, length_cmc_als_hat
         
     else:
     
@@ -290,12 +264,12 @@ def cfmc_simu_hetero(alpha,rk,A,M_star,P,het,kap,sigma_true=False,plot=False,ful
         for i in range(ind_test.shape[0]):
             m_star = np.append(m_star, M_star[ind_test[i,0],ind_test[i,1]])
         # compute coverage rate and average length
-        cov_rt_als = np.mean((lo_als <= m_star) & (up_als >= m_star))
-        cov_rt_als_hat = np.mean((lo_als_hat <= m_star) & (up_als_hat >= m_star))
-        cov_rt_q = np.mean((lo_q <= m_star) & (up_q >= m_star))
+        coverage_cmc_als = np.mean((lo_als <= m_star) & (up_als >= m_star))
+        coverage_cmc_als_hat = np.mean((lo_als_hat <= m_star) & (up_als_hat >= m_star))
         
-        len_ave_als = np.round(np.mean((up_als - lo_als)),4)
-        len_ave_als_hat = np.round(np.mean((up_als_hat - lo_als_hat)),4)
+        
+        length_cmc_als = np.round(np.mean((up_als - lo_als)),4)
+        length_cmc_als_hat = np.round(np.mean((up_als_hat - lo_als_hat)),4)
         len_ave_q = np.round(np.mean((up_q - lo_q)),4)
 
-        return cov_rt_als, cov_rt_als_hat, len_ave_als, len_ave_als_hat
+        return coverage_cmc_als, coverage_cmc_als_hat, length_cmc_als, length_cmc_als_hat
