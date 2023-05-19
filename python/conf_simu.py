@@ -109,7 +109,6 @@ def cfmc_simu(alpha,rk,A,S,M_star,P,het,plot=False,full_exp=False):
     # construct lower & upper bnds
     base2 = 'als'    # base algorithm
     q = 0.8
-    #  lo_als, up_als, r, qvals, M_cf_als, s_cf_als = cmc(A,S,ind_test,alpha,P,rk,wtd=True,het=het,w=[],oracle=False,base='als')
     lo_als, up_als, r, qvals, M_cf_als, s_cf_als = cmc_alg(A, S, alpha, q, rk, missing_model="homo", base="als")
 
     # model-based methods
@@ -171,11 +170,7 @@ def cfmc_simu(alpha,rk,A,S,M_star,P,het,plot=False,full_exp=False):
 
     
     if full_exp:
-        base1 = 'cvx'    # base algorithm
-        label1 = 'cf-'+base1
-        label3 = 'cvx'
-    
-        lo_cvx, up_cvx, r_, qvals_, M_cf_cvx, s_cf_cvx = cmc(A,S,ind_test,alpha,P,rk,wtd=True,het=het,w=[],oracle=False,base=base1)
+        lo_cvx, up_cvx, r_, qvals_, M_cf_cvx, s_cf_cvx = cmc_alg(A, S, alpha, q, rk, missing_model="homo", base="cvx")
 
         # convex
         eta = 1
@@ -223,7 +218,7 @@ def cfmc_simu_hetero(alpha,rk,A,S,M_star,P,het,full_exp=False):
     
     # construct lower & upper bnds
     base2 = 'als'    # base algorithm
-    lo_als_hat, up_als_hat, r, qvals, _, _ = cmc(A,S,ind_test,alpha,P,rk,wtd=True,het=het,w=[],oracle=False,base=base2)
+    lo_als_hat, up_als_hat, r, qvals, _, _ = cmc_alg(A, S, alpha, q, rk, missing_model="homo", base="als")
     
     # oracle case: when P is known
     lo_als, up_als, _, _, _, _ = cmc(A,S,ind_test,alpha,P,rk,wtd=True,het=het,w=[],oracle=True,base=base2)
