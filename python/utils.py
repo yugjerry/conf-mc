@@ -403,16 +403,18 @@ def cmc(M0, S, ind, alpha, P, rk, wtd, het, w, oracle, base, verbose=False):
 
 
 
-def estimate_P(S_train, q, missing_model='homo'):
+def estimate_P(S_train, q, P, missing_model='homo'):
     d1, d2 = S_train.shape
-    if missing_model == "homo":
+    if missing_model == "oracle":
+        P_hat = P
+    elif missing_model == "homo":
         P_hat = (1/q)* np.mean(S_train) * np.ones((d1,d2))
-    elif missing_model == 'logis1' or het == 'logis2':
+    elif missing_model == 'logis1' or missing_model == 'logis2':
         yy = 2*(S_train-0.5).ravel()
-        x_init = np.zeros(N)
-        idx = range(N)
+        x_init = np.zeros(d1*d2)
+        idx = range(d1*d2)
         const   = 1.0
-        if het == 'logis1':
+        if missing_model == 'logis1':
             k_l = 5
         else:
             k_l = 1
@@ -439,8 +441,7 @@ def estimate_P(S_train, q, missing_model='homo'):
         x_,F_ = SPG(funObj, funProj, x_init, spg_options)
         A_hat = x_.reshape((d1,d2))
         U,s_hat,Vh = np.linalg.svd(A_hat)
-        k_p = 2
-        M_d = U[:,:k_p]@np.diag(s_hat[:k_p])@Vh[:k_p,:]
+        M_d = U[:,:k_l]@np.diag(s_hat[:k_l])@Vh[:k_l,:]
         P_hat = (1/q )*f_(M_d,q ).reshape((d1,d2)) 
     elif het=='rank1':
         u_hat, s_hat, vt_hat = svds_(S_train,1)
@@ -448,7 +449,7 @@ def estimate_P(S_train, q, missing_model='homo'):
     return P_hat 
 
 
-def estimate_M(M_train, S_train, rk, P_hat, base):
+def estimate_M(M_train, S_train, rk, P_hat, q, base):
     if base=='als': 
         M_hat, sigma_est, sigmaS = ALS_solve(M_train, S_train, rk, 0)
         
@@ -467,7 +468,7 @@ def estimate_M(M_train, S_train, rk, P_hat, base):
 
 # conformalized matrix completion
 # this aims to implement our Algorithm 1
-def cmc_alg(M0, S, alpha, q, rk, missing_model="homo", base="als"):
+def cmc_alg(M0, S, alpha, q, rk, P, missing_model="homo", base="als"):
 
     d1, d2 = M0.shape
 
@@ -491,10 +492,10 @@ def cmc_alg(M0, S, alpha, q, rk, missing_model="homo", base="als"):
 
 
     # estimate P_hat from S_train
-    P_hat = estimate_P(S_train, q, missing_model)
+    P_hat = estimate_P(S_train, q, P, missing_model)
 
     # estimate M_hat and s_hat from M_train
-    M_hat, s_hat = estimate_M(M_train, S_train, rk, P_hat, base)
+    M_hat, s_hat = estimate_M(M_train, S_train, rk, P_hat, q, base)
 
     
     score = np.divide(np.abs(M_cal - M_hat), s_hat)

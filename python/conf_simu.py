@@ -109,7 +109,7 @@ def cfmc_simu(alpha,rk,A,S,M_star,P,het,plot=False,full_exp=False):
     # construct lower & upper bnds
     base2 = 'als'    # base algorithm
     q = 0.8
-    lo_als, up_als, r, qvals, M_cf_als, s_cf_als = cmc_alg(A, S, alpha, q, rk, missing_model="homo", base="als")
+    lo_als, up_als, r, qvals, M_cf_als, s_cf_als = cmc_alg(A, S, alpha, q, rk, P, missing_model="homo", base="als")
 
     # model-based methods
     p_est = np.mean(S)
@@ -170,7 +170,7 @@ def cfmc_simu(alpha,rk,A,S,M_star,P,het,plot=False,full_exp=False):
 
     
     if full_exp:
-        lo_cvx, up_cvx, r_, qvals_, M_cf_cvx, s_cf_cvx = cmc_alg(A, S, alpha, q, rk, missing_model="homo", base="cvx")
+        lo_cvx, up_cvx, r_, qvals_, M_cf_cvx, s_cf_cvx = cmc_alg(A, S, alpha, q, rk, P, missing_model="homo", base="cvx")
 
         # convex
         eta = 1
@@ -215,19 +215,21 @@ def cfmc_simu_hetero(alpha,rk,A,S,M_star,P,het,full_exp=False):
     n0 = ind_test_all.shape[0]
     # randomly choose m of missing entries
     ind_test = ind_test_all
+
     
     # construct lower & upper bnds
+    q = 0.8
     base2 = 'als'    # base algorithm
-    lo_als_hat, up_als_hat, r, qvals, _, _ = cmc_alg(A, S, alpha, q, rk, missing_model="homo", base="als")
+    lo_als_hat, up_als_hat, r, qvals, _, _ = cmc_alg(A, S, alpha, q, rk, P, missing_model=het, base="als")
     
     # oracle case: when P is known
-    lo_als, up_als, _, _, _, _ = cmc(A,S,ind_test,alpha,P,rk,wtd=True,het=het,w=[],oracle=True,base=base2)
+    lo_als, up_als, _, _, _, _ = cmc_alg(A, S, alpha, q, rk, P, missing_model="oracle", base="als")
     
     if full_exp:
         base1 = 'cvx'    # base algorithm
-        lo_cvx_hat, up_cvx_hat, r_, qvals_, M_cf_cvx, s_cf_cvx = cmc(A,S,ind_test,alpha,P,rk,wtd=True,het=het,w=[],oracle=False,base=base1)
+        lo_cvx_hat, up_cvx_hat, r_, qvals_, M_cf_cvx, s_cf_cvx = cmc_alg(A, S, alpha, q, rk, P, missing_model="oracle", base="cvx")
         
-        lo_cvx, up_cvx, _, _, _, _ = cmc(A,S,ind_test,alpha,P,rk,wtd=True,het=het,w=[],oracle=True,base=base1)
+        lo_cvx, up_cvx, _, _, _, _ = cmc_alg(A, S, alpha, q, rk, P, missing_model=het, base="cvx")
         
         # evaluation
         m_star = []
