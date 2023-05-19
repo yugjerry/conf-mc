@@ -401,3 +401,51 @@ def cmc(M0, S, ind, alpha, P, rk, wtd, het, w, oracle, base, verbose=False):
     
     return lo, up, r, qvals, M_hat, s_hat
 
+
+# conformalized matrix completion
+# this aims to implement our Algorithm 1
+def cmc_alg_1(M0, S, alpha, q, M_hat, P_hat, s_hat):
+
+    d1, d2 = M0.shape
+
+    n_obs = np.sum(S)
+    n0 = d1 * d2 - n_obs
+
+    lo, up = np.zeros(n0), np.zeros(n0)
+    
+    # split the observed matrix into train and calibration sets
+    train_selector = np.less(np.random.rand(d1,d2), q)
+
+    S_train = S * train_selector
+    S_cal = S * (1 - train_selector)
+
+    n_train = np.sum(S_train)
+    n_cal = n_obs - n_train
+    assert n_cal == np.sum(S_cal)
+
+    M_train = M0 * S_train
+    M_cal = M0 * S_cal
+
+    score = np.divide(np.abs(M_cal - M_hat), s_hat)
+    
+    H_hat = (1-P_hat) / P_hat
+    w_max = np.max( (1 - S) * H_hat )
+    
+    
+    ww = np.zeros(n_cal+1)
+    ww[:n_cal] = H_hat[S_cal]
+    ww[n_cal] = w_max
+
+    r_new = 10000
+    r = np.append(score[S_cal],r_new)
+        
+    qvals = weighted_quantile(r, prob = 1-alpha, w = ww)
+
+    lo_mat = M_hat - qvals * s_hat
+    up_mat = M_hat + qvals * s_hat
+    lo = lo_mat[1-S].reshape(-1)
+    up = up_mat[1-S].reshape(-1)
+    
+    return lo, up, r, qvals, M_hat, s_hat
+
+
