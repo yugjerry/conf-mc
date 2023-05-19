@@ -401,9 +401,55 @@ def cmc(M0, S, ind, alpha, P, rk, wtd, het, w, oracle, base, verbose=False):
     return lo, up, r, qvals, M_hat, s_hat
 
 
+
+
+def estimate_P(S_train, q, missing_model='homo'):
+    d1, d2 = S_train.shape
+    if missing_model == "homo":
+        P_hat_ = (1/q)* np.mean(S_train) * np.ones((d1,d2))
+    elif missing_model == 'logis1' or het == 'logis2':
+        yy = 2*(S_train-0.5).ravel()
+        x_init = np.zeros(N)
+        idx = range(N)
+        const   = 1.0
+        if het == 'logis1':
+            k_l = 5
+        else:
+            k_l = 1
+        radius  = const * np.sqrt(d1*d2*k_l)
+        f_loc = lambda x: f_(x,q )
+        fprime_loc = lambda x: fprime(x,q )
+        funObj  = lambda x_var: logObjectiveGeneral(x_var,yy,idx,f_loc,fprime_loc)
+        funProj = lambda x_var: projectNuclear(x_var,d1,d2,radius,const)
+
+        default_options = SPGOptions()
+        default_options.maxIter = 10000
+        default_options.verbose = 2
+        default_options.suffDec = 1e-4
+        default_options.progTol = 1e-9
+        default_options.optTol = 1e-9
+        default_options.curvilinear = 1
+        default_options.memory = 10
+        default_options.useSpectral = True
+        default_options.bbType = 1
+        default_options.interp = 2  # cubic
+        default_options.numdiff = 0
+        default_options.testOpt = True
+        spg_options = default_options
+        x_,F_ = SPG(funObj, funProj, x_init, spg_options)
+        A_hat = x_.reshape((d1,d2))
+        U,s_hat,Vh = np.linalg.svd(A_hat)
+        k_p = 2
+        M_d = U[:,:k_p]@np.diag(s_hat[:k_p])@Vh[:k_p,:]
+        P_hat_ = (1/q )*f_(M_d,q ).reshape((d1,d2)) 
+    elif het=='rank1':
+        u_hat, s_hat, vt_hat = svds_(S_train,1)
+        P_hat_ = (1/q)*u_hat @ np.diag(s_hat) @ vt_hat
+    return P_hat 
+
 # conformalized matrix completion
 # this aims to implement our Algorithm 1
-def cmc_alg_1(M0, S, alpha, q, M_hat, P_hat, s_hat):
+def cmc_alg_1(M0, S, alpha, q, rk, missing_model="homo", base="als"):
 
     d1, d2 = M0.shape
 
@@ -425,9 +471,30 @@ def cmc_alg_1(M0, S, alpha, q, M_hat, P_hat, s_hat):
     M_train = M0 * S_train
     M_cal = M0 * S_cal
 
+
+    # estimate P_hat from S_train
+    P_hat = estimate_P(S_train, q, missing_model)
+
+
+    # estimate M_hat and s_hat from M_train
+
+    if base=='als': 
+        M_hat, sigma_est, sigmaS = ALS_solve(M_train, S_train, rk, 0)
+        
+    elif base=='cvx':
+        P_inv = 1 / P_hat
+        p_est1 = np.mean(S_train)
+        # estimated standard deviation
+        u_, s_, vh_ = svds_((1/q) * M_train * P_inv, rk)
+        M_spec = u_ @ np.diag(s_) @ vh_
+        sigma_est_spec = np.sqrt(np.sum(((M_train-M_spec)*S_train)**2)/np.sum(S_train))
+        M_hat,X_d_,Y_d_,sigma_est,sigmaS = cvx_mc(M_train, S_train, p_est1, rk, sigma_est_spec, eta=1)
+
+    s_hat = np.sqrt(sigmaS**2 + sigma_est**2)
+    
     score = np.divide(np.abs(M_cal - M_hat), s_hat)
     
-    H_hat = (1-P_hat) / P_hat
+    H_hat = (1 - P_hat) / P_hat
     w_max = np.max( (1 - S) * H_hat )
     
     
