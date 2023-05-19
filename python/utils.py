@@ -375,8 +375,7 @@ def cmc(M0, S, ind, alpha, P, rk, wtd, het, w, oracle, base, verbose=False):
     
     dist = np.divide(np.abs(M_calib - M_hat), s_hat)
     
-    # Cong: Check the weights
-    w_max = np.max(S*((1-P_hat_)/P_hat_))
+    w_max = np.max((1-S)*((1-P_hat_)/P_hat_))
     
     if((len(w)==0) & (wtd==False)):
         ww = np.ones(n_calib+1)
