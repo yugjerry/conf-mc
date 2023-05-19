@@ -119,10 +119,6 @@ def model_based(rk, M_obs, S, M_star, alpha, base):
 def cfmc_simu(alpha, rk, M_obs, S, M_star, P, het, full_exp=False):
     
     d1, d2 = M_obs.shape
-    
-    # empirical quantiles
-    a = M_obs.ravel()
-    a = a[a!=0]
         
     # M_star: underlying true matrix
     # M_obs: partially observed matrix
@@ -174,10 +170,6 @@ def cfmc_simu(alpha, rk, M_obs, S, M_star, P, het, full_exp=False):
 def cfmc_simu_hetero(alpha, rk, M_obs, S, M_star, P, het, full_exp=False):
     
     d1, d2 = M_obs.shape[0], M_obs.shape[1]
-    
-    # empirical quantiles
-    a = M_obs.ravel()
-    a = a[a!=0]
         
     # M_star: underlying true matrix
     # M_obs: partially observed matrix
