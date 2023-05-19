@@ -88,7 +88,35 @@ def gen_(d1,d2,het,sd,tail,pr,M_mean,mis_set,k_star):
     S = S.astype(dtype=bool)
     return M_star, A, P, S
 
-def cfmc_simu(alpha,rk,A,S,M_star,P,het,plot=False,full_exp=False):
+
+def model_based(rk,A,S,M_star,alpha,base):
+    d1, d2 = A.shape
+    p_est = np.mean(S)
+    u, s, vh = svds_(A/p_est, rk)
+    M_spectral = u @ np.diag(s) @ vh
+    sigma_est_spec = np.sqrt(np.sum((( A - M_spectral)*S)**2)/(d1*d2*p_est))
+
+    if base == "als":
+        Mhat, sigma_est, sigmaS = ALS_solve(A, S, rk, 0.0)
+        itn = 0
+        while (np.linalg.norm((Mhat - M_star) * S) / np.linalg.norm(M_star * S) > 1) and (itn <= 5):
+            Mhat, sigma_est, sigmaS = ALS_solve(A, S, rk, 0.0)
+            itn += 1
+        s = np.sqrt(sigmaS**2 + sigma_est**2)
+    elif base == "cvx":
+        Mhat, X_d, Y_d, sigma_est, sigmaS = cvx_mc(A, S, p_est, rk, sigma_est_spec, eta=1)
+
+        s = np.sqrt(sigmaS**2 + sigma_est**2)
+
+    mul = norm.ppf(1-alpha/2)
+    lo_uq_mat = Mhat - s * mul
+    up_uq_mat = Mhat + s * mul
+    lo_uq = lo_uq_mat[~S].reshape(-1)
+    up_uq = up_uq_mat[~S].reshape(-1)
+    return lo_uq, up_uq, Mhat, s
+        
+
+def cfmc_simu(alpha,rk,A,S,M_star,P,het,full_exp=False):
     
     d1, d2 = A.shape
     
@@ -102,36 +130,15 @@ def cfmc_simu(alpha,rk,A,S,M_star,P,het,plot=False,full_exp=False):
     # A: partially observed matrix
 
     # unobserved indices
-    ind_test_all = np.transpose(np.nonzero(S==0))
-    n0 = ind_test_all.shape[0]
-    ind_test = ind_test_all
+    ind_test = np.transpose(np.nonzero(S==0))
+    n0 = ind_test.shape[0]
     
     # construct lower & upper bnds
-    base2 = 'als'    # base algorithm
     q = 0.8
     lo_als, up_als, r, qvals, M_cf_als, s_cf_als = cmc_alg(A, S, alpha, q, rk, P, missing_model="homo", base="als")
 
-    # model-based methods
-    p_est = np.mean(S)
-    u, s, vh = svds_(A/p_est, rk)
-    M_spectral = u @ np.diag(s) @ vh
-    sigma_est_spec = np.sqrt(np.sum((( A - M_spectral)*S)**2)/(d1*d2*p_est))
-    
-    
-    # alternating least squares
-    Mhat_als, sigma_est_als, sigmaS_als = ALS_solve(A, S, rk, 0.0)
-    itn = 0
-    while (np.linalg.norm((Mhat_als - M_star) * S) / np.linalg.norm(M_star * S) > 1) and (itn <= 5):
-        Mhat_als, sigma_est_als, sigmaS_als = ALS_solve(A, S, rk, 0.0)
-        itn += 1
-        
-    s_als = np.sqrt(sigmaS_als**2 + sigma_est_als**2)
-
-    mul = norm.ppf(1-alpha/2)
-    lo_uq_mat = Mhat_als - s_als * mul
-    up_uq_mat = Mhat_als + s_als * mul
-    lo_uq_als = lo_uq_mat[S==0].reshape(-1)
-    up_uq_als = up_uq_mat[S==0].reshape(-1)
+    # model-based: alternating least squares
+    lo_uq_als, up_uq_als, Mhat_als, s_als = model_based(rk,A,S,M_star,alpha,base = "als")
 
     
     # evaluation
@@ -139,49 +146,18 @@ def cfmc_simu(alpha,rk,A,S,M_star,P,het,plot=False,full_exp=False):
     for i in range(ind_test.shape[0]):
         m_star = np.append(m_star, M_star[ind_test[i,0],ind_test[i,1]])
 
-    label2 = 'cmc-als'
-    label4 = 'als'
     # compute coverage rate and average length
     coverage_cmc_als = np.mean((lo_als <= m_star) & (up_als >= m_star))
     coverage_als = np.mean((lo_uq_als <= m_star) & (up_uq_als >= m_star))
     length_cmc_als = np.round(np.mean((up_als - lo_als)),4)
     length_als = np.round(np.mean((up_uq_als - lo_uq_als)),4)
-    
-
-    
-    u_cf_als = np.divide((M_cf_als - M_star)[S==0],s_cf_als[S==0]).reshape(-1)
-    u = np.random.normal(0,1,10000)
-    u_hat_als = np.divide((Mhat_als - M_star)[S==0], s_als[S==0]).reshape(-1)
-    
-    if plot==True:
-        fig, ax = plt.subplots(ncols=2,figsize=(6,4))
-        fig.tight_layout(pad=0.6)
-        sns.set(font_scale = 1.4)
-
-        sns.distplot(u_cf_als[np.abs(u_cf_als)<5], bins=60,kde=True, hist=True,label='true',ax=ax[0])
-        sns.distplot(u, bins=20,kde=True, hist=True,label='theory',ax=ax[0])
-        ax[0].legend(loc='best')
-        ax[0].set_title('als')
-
-        sns.distplot(u_hat_als[np.abs(u_hat_als)<5], bins=60,kde=True, hist=True,label='true',ax=ax[1])
-        sns.distplot(u, bins=20,kde=True, hist=True,label='theory',ax=ax[1])
-        ax[1].legend(loc='best')
-        ax[1].set_title('als')
 
     
     if full_exp:
         lo_cvx, up_cvx, r_, qvals_, M_cf_cvx, s_cf_cvx = cmc_alg(A, S, alpha, q, rk, P, missing_model="homo", base="cvx")
 
-        # convex
-        eta = 1
-        Mhat_cvx, X_d_cvx, Y_d_cvx, sigma_est_cvx, sigmaS_cvx = cvx_mc(A, S, p_est, rk, sigma_est_spec, eta=eta)
-
-        s_cvx = np.sqrt(sigmaS_cvx**2 + sigma_est_cvx**2)
-
-        lo_uq_mat = Mhat_cvx - s_cvx * mul
-        up_uq_mat = Mhat_cvx + s_cvx * mul
-        lo_uq_cvx = lo_uq_mat[S==0].reshape(-1)
-        up_uq_cvx = up_uq_mat[S==0].reshape(-1)
+        # model-based: convex
+        lo_uq_cvx, up_uq_cvx, Mhat_cvx, s_cvx = model_based(rk,A,S,M_star,alpha,base="cvx")
         
         coverage_cmc_cvx = np.mean((lo_cvx <= m_star) & (up_cvx >= m_star))
         coverage_cvx = np.mean((lo_uq_cvx <= m_star) & (up_uq_cvx >= m_star))
@@ -211,22 +187,18 @@ def cfmc_simu_hetero(alpha,rk,A,S,M_star,P,het,full_exp=False):
     # A: partially observed matrix
 
     # unobserved indices
-    ind_test_all = np.transpose(np.nonzero(S==0))
-    n0 = ind_test_all.shape[0]
-    # randomly choose m of missing entries
-    ind_test = ind_test_all
+    ind_test = np.transpose(np.nonzero(S==0))
+    n0 = ind_test.shape[0]
 
     
     # construct lower & upper bnds
     q = 0.8
-    base2 = 'als'    # base algorithm
     lo_als_hat, up_als_hat, r, qvals, _, _ = cmc_alg(A, S, alpha, q, rk, P, missing_model=het, base="als")
     
     # oracle case: when P is known
     lo_als, up_als, _, _, _, _ = cmc_alg(A, S, alpha, q, rk, P, missing_model="oracle", base="als")
     
     if full_exp:
-        base1 = 'cvx'    # base algorithm
         lo_cvx_hat, up_cvx_hat, r_, qvals_, M_cf_cvx, s_cf_cvx = cmc_alg(A, S, alpha, q, rk, P, missing_model="oracle", base="cvx")
         
         lo_cvx, up_cvx, _, _, _, _ = cmc_alg(A, S, alpha, q, rk, P, missing_model=het, base="cvx")
@@ -235,10 +207,7 @@ def cfmc_simu_hetero(alpha,rk,A,S,M_star,P,het,full_exp=False):
         m_star = []
         for i in range(ind_test.shape[0]):
             m_star = np.append(m_star, M_star[ind_test[i,0],ind_test[i,1]])
-        label1 = 'cf*-'+base1
-        label2 = 'cf*-'+base2
-        label3 = 'cf-'+base1
-        label4 = 'cf-'+base2
+
         # compute coverage rate and average length
         coverage_cmc_cvx = np.mean((lo_cvx <= m_star) & (up_cvx >= m_star))
         coverage_cmc_als = np.mean((lo_als <= m_star) & (up_als >= m_star))
@@ -250,7 +219,6 @@ def cfmc_simu_hetero(alpha,rk,A,S,M_star,P,het,full_exp=False):
         length_cmc_als = np.round(np.mean((up_als - lo_als)),4)
         length_cmc_cvx_hat = np.round(np.mean((up_cvx_hat - lo_cvx_hat)),4)
         length_cmc_als_hat = np.round(np.mean((up_als_hat - lo_als_hat)),4)
-        len_ave_q = np.round(np.mean((up_q - lo_q)),4)
         
         return coverage_cmc_cvx, coverage_cmc_als, coverage_cmc_cvx_hat, coverage_cmc_als_hat, length_cmc_cvx, length_cmc_als, length_cmc_cvx_hat, length_cmc_als_hat
         
