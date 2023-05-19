@@ -262,14 +262,14 @@ def weighted_quantile(v,prob,w):
         return v[np.min(i)]
     
 # conformalized matrix completion
-def cmc(M0, S, ind, alpha, P, rk, wtd, het, w, oracle, base, verbose=False):
+def cmc(M_obs, S, ind, alpha, P, rk, wtd, het, w, oracle, base, verbose=False):
     # weights are used for computing quantiles for the prediction interval
 
     # ind: indices for unobserved entries
 
-    d1, d2 = M0.shape
+    d1, d2 = M_obs.shape
     
-    ind_nonzero = np.transpose(np.nonzero(M0))
+    ind_nonzero = np.transpose(np.nonzero(M_obs))
 
 
     N = d1*d2
@@ -286,8 +286,8 @@ def cmc(M0, S, ind, alpha, P, rk, wtd, het, w, oracle, base, verbose=False):
     ind_calib = ind_nonzero[~mask,:]   # calibration set
     n_train = np.sum(mask)
     n_calib = n - n_train
-    M_calib = np.copy(M0)
-    M_train = np.copy(M0)
+    M_calib = np.copy(M_obs)
+    M_train = np.copy(M_obs)
     M_train[ind_calib[:,0],ind_calib[:,1]] = 0
     
     # Cong: this needs to be changed
@@ -468,9 +468,9 @@ def estimate_M(M_train, S_train, rk, P_hat, q, base):
 
 # conformalized matrix completion
 # this aims to implement our Algorithm 1
-def cmc_alg(M0, S, alpha, q, rk, P, missing_model="homo", base="als"):
+def cmc_alg(M_obs, S, alpha, q, rk, P, missing_model="homo", base="als"):
 
-    d1, d2 = M0.shape
+    d1, d2 = M_obs.shape
 
     n_obs = np.sum(S)
     n0 = d1 * d2 - n_obs
@@ -487,8 +487,8 @@ def cmc_alg(M0, S, alpha, q, rk, P, missing_model="homo", base="als"):
     n_cal = n_obs - n_train
     assert n_cal == np.sum(S_cal)
 
-    M_train = M0 * S_train
-    M_cal = M0 * S_cal
+    M_train = M_obs * S_train
+    M_cal = M_obs * S_cal
 
 
     # estimate P_hat from S_train

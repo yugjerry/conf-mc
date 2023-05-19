@@ -17,7 +17,7 @@ from joblib import Parallel, delayed
 from utils import *
 
 
-def gen_(d1,d2,het,sd,tail,pr,M_mean,mis_set,k_star):
+def gen_(d1, d2, het, sd, tail, pr, M_mean, mis_set, k_star):
     '''
     The code defines a function called gen_ that generates a synthetic matrix with missing values. The function takes several parameters:
     
@@ -65,9 +65,9 @@ def gen_(d1,d2,het,sd,tail,pr,M_mean,mis_set,k_star):
     P = gen_P(het)
 
     if mis_set == 1:
-        M_star, A, S = mat_gen_mis(d1,d2,P,k_star,M_mean)
+        M_star, M_obs, S = mat_gen_mis(d1,d2,P,k_star,M_mean)
     else:
-        M_star, A, S = mat_gen(d1,d2,P,k_star,M_mean)
+        M_star, M_obs, S = mat_gen(d1,d2,P,k_star,M_mean)
     
     # tails
 
@@ -82,29 +82,29 @@ def gen_(d1,d2,het,sd,tail,pr,M_mean,mis_set,k_star):
         E = np.random.normal(0,(0.5/Q).ravel(),d1*d2).reshape((d1,d2))
         
 
-    A = A + E * S
+    M_obs = M_obs + E * S
     M_star += E
-    assert (M_star * S == A).all()
+    assert (M_star * S == M_obs).all()
     S = S.astype(dtype=bool)
-    return M_star, A, P, S
+    return M_star, M_obs, P, S
 
 
-def model_based(rk,A,S,M_star,alpha,base):
-    d1, d2 = A.shape
+def model_based(rk, M_obs, S, M_star, alpha, base):
+    d1, d2 = M_obs.shape
     p_est = np.mean(S)
-    u, s, vh = svds_(A/p_est, rk)
+    u, s, vh = svds_(M_obs/p_est, rk)
     M_spectral = u @ np.diag(s) @ vh
-    sigma_est_spec = np.sqrt(np.sum((( A - M_spectral)*S)**2)/(d1*d2*p_est))
+    sigma_est_spec = np.sqrt(np.sum((( M_obs - M_spectral)*S)**2)/(d1*d2*p_est))
 
     if base == "als":
-        Mhat, sigma_est, sigmaS = ALS_solve(A, S, rk, 0.0)
+        Mhat, sigma_est, sigmaS = ALS_solve(M_obs, S, rk, 0.0)
         itn = 0
         while (np.linalg.norm((Mhat - M_star) * S) / np.linalg.norm(M_star * S) > 1) and (itn <= 5):
-            Mhat, sigma_est, sigmaS = ALS_solve(A, S, rk, 0.0)
+            Mhat, sigma_est, sigmaS = ALS_solve(M_obs, S, rk, 0.0)
             itn += 1
         s = np.sqrt(sigmaS**2 + sigma_est**2)
     elif base == "cvx":
-        Mhat, X_d, Y_d, sigma_est, sigmaS = cvx_mc(A, S, p_est, rk, sigma_est_spec, eta=1)
+        Mhat, X_d, Y_d, sigma_est, sigmaS = cvx_mc(M_obs, S, p_est, rk, sigma_est_spec, eta=1)
 
         s = np.sqrt(sigmaS**2 + sigma_est**2)
 
@@ -116,18 +116,16 @@ def model_based(rk,A,S,M_star,alpha,base):
     return lo_uq, up_uq, Mhat, s
         
 
-def cfmc_simu(alpha,rk,A,S,M_star,P,het,full_exp=False):
+def cfmc_simu(alpha, rk, M_obs, S, M_star, P, het, full_exp=False):
     
-    d1, d2 = A.shape
+    d1, d2 = M_obs.shape
     
     # empirical quantiles
-    a = A.ravel()
+    a = M_obs.ravel()
     a = a[a!=0]
-    lo_q = np.quantile(a, alpha/2)
-    up_q = np.quantile(a, 1-alpha/2)
         
     # M_star: underlying true matrix
-    # A: partially observed matrix
+    # M_obs: partially observed matrix
 
     # unobserved indices
     ind_test = np.transpose(np.nonzero(S==0))
@@ -135,10 +133,10 @@ def cfmc_simu(alpha,rk,A,S,M_star,P,het,full_exp=False):
     
     # construct lower & upper bnds
     q = 0.8
-    lo_als, up_als, r, qvals, M_cf_als, s_cf_als = cmc_alg(A, S, alpha, q, rk, P, missing_model="homo", base="als")
+    lo_als, up_als, r, qvals, M_cf_als, s_cf_als = cmc_alg(M_obs, S, alpha, q, rk, P, missing_model="homo", base="als")
 
     # model-based: alternating least squares
-    lo_uq_als, up_uq_als, Mhat_als, s_als = model_based(rk,A,S,M_star,alpha,base = "als")
+    lo_uq_als, up_uq_als, Mhat_als, s_als = model_based(rk,M_obs,S,M_star,alpha,base = "als")
 
     
     # evaluation
@@ -154,10 +152,10 @@ def cfmc_simu(alpha,rk,A,S,M_star,P,het,full_exp=False):
 
     
     if full_exp:
-        lo_cvx, up_cvx, r_, qvals_, M_cf_cvx, s_cf_cvx = cmc_alg(A, S, alpha, q, rk, P, missing_model="homo", base="cvx")
+        lo_cvx, up_cvx, r_, qvals_, M_cf_cvx, s_cf_cvx = cmc_alg(M_obs, S, alpha, q, rk, P, missing_model="homo", base="cvx")
 
         # model-based: convex
-        lo_uq_cvx, up_uq_cvx, Mhat_cvx, s_cvx = model_based(rk,A,S,M_star,alpha,base="cvx")
+        lo_uq_cvx, up_uq_cvx, Mhat_cvx, s_cvx = model_based(rk,M_obs,S,M_star,alpha,base="cvx")
         
         coverage_cmc_cvx = np.mean((lo_cvx <= m_star) & (up_cvx >= m_star))
         coverage_cvx = np.mean((lo_uq_cvx <= m_star) & (up_uq_cvx >= m_star))
@@ -173,18 +171,16 @@ def cfmc_simu(alpha,rk,A,S,M_star,P,het,full_exp=False):
 
 
 
-def cfmc_simu_hetero(alpha,rk,A,S,M_star,P,het,full_exp=False):
+def cfmc_simu_hetero(alpha, rk, M_obs, S, M_star, P, het, full_exp=False):
     
-    d1, d2 = A.shape[0], A.shape[1]
+    d1, d2 = M_obs.shape[0], M_obs.shape[1]
     
     # empirical quantiles
-    a = A.ravel()
+    a = M_obs.ravel()
     a = a[a!=0]
-    lo_q = np.quantile(a, alpha/2)
-    up_q = np.quantile(a, 1-alpha/2)
         
     # M_star: underlying true matrix
-    # A: partially observed matrix
+    # M_obs: partially observed matrix
 
     # unobserved indices
     ind_test = np.transpose(np.nonzero(S==0))
@@ -193,15 +189,15 @@ def cfmc_simu_hetero(alpha,rk,A,S,M_star,P,het,full_exp=False):
     
     # construct lower & upper bnds
     q = 0.8
-    lo_als_hat, up_als_hat, r, qvals, _, _ = cmc_alg(A, S, alpha, q, rk, P, missing_model=het, base="als")
+    lo_als_hat, up_als_hat, r, qvals, _, _ = cmc_alg(M_obs, S, alpha, q, rk, P, missing_model=het, base="als")
     
     # oracle case: when P is known
-    lo_als, up_als, _, _, _, _ = cmc_alg(A, S, alpha, q, rk, P, missing_model="oracle", base="als")
+    lo_als, up_als, _, _, _, _ = cmc_alg(M_obs, S, alpha, q, rk, P, missing_model="oracle", base="als")
     
     if full_exp:
-        lo_cvx_hat, up_cvx_hat, r_, qvals_, M_cf_cvx, s_cf_cvx = cmc_alg(A, S, alpha, q, rk, P, missing_model="oracle", base="cvx")
+        lo_cvx_hat, up_cvx_hat, r_, qvals_, M_cf_cvx, s_cf_cvx = cmc_alg(M_obs, S, alpha, q, rk, P, missing_model="oracle", base="cvx")
         
-        lo_cvx, up_cvx, _, _, _, _ = cmc_alg(A, S, alpha, q, rk, P, missing_model=het, base="cvx")
+        lo_cvx, up_cvx, _, _, _, _ = cmc_alg(M_obs, S, alpha, q, rk, P, missing_model=het, base="cvx")
         
         # evaluation
         m_star = []
