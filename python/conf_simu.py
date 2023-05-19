@@ -85,6 +85,7 @@ def gen_(d1,d2,het,sd,tail,pr,M_mean,mis_set,k_star):
     A = A + E * S
     M_star += E
     assert (M_star * S == A).all()
+    S = S.astype(dtype=bool)
     return M_star, A, P, S
 
 def cfmc_simu(alpha,rk,A,S,M_star,P,het,plot=False,full_exp=False):
@@ -107,7 +108,9 @@ def cfmc_simu(alpha,rk,A,S,M_star,P,het,plot=False,full_exp=False):
     
     # construct lower & upper bnds
     base2 = 'als'    # base algorithm
-    lo_als, up_als, r, qvals, M_cf_als, s_cf_als = cmc(A,S,ind_test,alpha,P,rk,wtd=True,het=het,w=[],oracle=False,base='als')
+    q = 0.8
+    #  lo_als, up_als, r, qvals, M_cf_als, s_cf_als = cmc(A,S,ind_test,alpha,P,rk,wtd=True,het=het,w=[],oracle=False,base='als')
+    lo_als, up_als, r, qvals, M_cf_als, s_cf_als = cmc_alg(A, S, alpha, q, rk, missing_model="homo", base="als")
 
     # model-based methods
     p_est = np.mean(S)

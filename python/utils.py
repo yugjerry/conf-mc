@@ -406,7 +406,7 @@ def cmc(M0, S, ind, alpha, P, rk, wtd, het, w, oracle, base, verbose=False):
 def estimate_P(S_train, q, missing_model='homo'):
     d1, d2 = S_train.shape
     if missing_model == "homo":
-        P_hat_ = (1/q)* np.mean(S_train) * np.ones((d1,d2))
+        P_hat = (1/q)* np.mean(S_train) * np.ones((d1,d2))
     elif missing_model == 'logis1' or het == 'logis2':
         yy = 2*(S_train-0.5).ravel()
         x_init = np.zeros(N)
@@ -441,43 +441,14 @@ def estimate_P(S_train, q, missing_model='homo'):
         U,s_hat,Vh = np.linalg.svd(A_hat)
         k_p = 2
         M_d = U[:,:k_p]@np.diag(s_hat[:k_p])@Vh[:k_p,:]
-        P_hat_ = (1/q )*f_(M_d,q ).reshape((d1,d2)) 
+        P_hat = (1/q )*f_(M_d,q ).reshape((d1,d2)) 
     elif het=='rank1':
         u_hat, s_hat, vt_hat = svds_(S_train,1)
-        P_hat_ = (1/q)*u_hat @ np.diag(s_hat) @ vt_hat
+        P_hat = (1/q)*u_hat @ np.diag(s_hat) @ vt_hat
     return P_hat 
 
-# conformalized matrix completion
-# this aims to implement our Algorithm 1
-def cmc_alg_1(M0, S, alpha, q, rk, missing_model="homo", base="als"):
 
-    d1, d2 = M0.shape
-
-    n_obs = np.sum(S)
-    n0 = d1 * d2 - n_obs
-
-    lo, up = np.zeros(n0), np.zeros(n0)
-    
-    # split the observed matrix into train and calibration sets
-    train_selector = np.less(np.random.rand(d1,d2), q)
-
-    S_train = S * train_selector
-    S_cal = S * (1 - train_selector)
-
-    n_train = np.sum(S_train)
-    n_cal = n_obs - n_train
-    assert n_cal == np.sum(S_cal)
-
-    M_train = M0 * S_train
-    M_cal = M0 * S_cal
-
-
-    # estimate P_hat from S_train
-    P_hat = estimate_P(S_train, q, missing_model)
-
-
-    # estimate M_hat and s_hat from M_train
-
+def estimate_M(M_train, S_train, rk, P_hat, base):
     if base=='als': 
         M_hat, sigma_est, sigmaS = ALS_solve(M_train, S_train, rk, 0)
         
@@ -491,6 +462,40 @@ def cmc_alg_1(M0, S, alpha, q, rk, missing_model="homo", base="als"):
         M_hat,X_d_,Y_d_,sigma_est,sigmaS = cvx_mc(M_train, S_train, p_est1, rk, sigma_est_spec, eta=1)
 
     s_hat = np.sqrt(sigmaS**2 + sigma_est**2)
+
+    return M_hat, s_hat
+
+# conformalized matrix completion
+# this aims to implement our Algorithm 1
+def cmc_alg(M0, S, alpha, q, rk, missing_model="homo", base="als"):
+
+    d1, d2 = M0.shape
+
+    n_obs = np.sum(S)
+    n0 = d1 * d2 - n_obs
+
+    lo, up = np.zeros(n0), np.zeros(n0)
+    
+    # split the observed matrix into train and calibration sets
+    train_selector = np.less(np.random.rand(d1,d2), q)
+
+    S_train = (S * train_selector).astype(dtype=bool)
+    S_cal = (S * (1 - train_selector)).astype(dtype=bool)
+
+    n_train = np.sum(S_train)
+    n_cal = n_obs - n_train
+    assert n_cal == np.sum(S_cal)
+
+    M_train = M0 * S_train
+    M_cal = M0 * S_cal
+
+
+    # estimate P_hat from S_train
+    P_hat = estimate_P(S_train, q, missing_model)
+
+    # estimate M_hat and s_hat from M_train
+    M_hat, s_hat = estimate_M(M_train, S_train, rk, P_hat, base)
+
     
     score = np.divide(np.abs(M_cal - M_hat), s_hat)
     
@@ -499,7 +504,7 @@ def cmc_alg_1(M0, S, alpha, q, rk, missing_model="homo", base="als"):
     
     
     ww = np.zeros(n_cal+1)
-    ww[:n_cal] = H_hat[S_cal]
+    ww[:n_cal] = H_hat[S_cal].ravel()
     ww[n_cal] = w_max
 
     r_new = 10000
@@ -509,8 +514,8 @@ def cmc_alg_1(M0, S, alpha, q, rk, missing_model="homo", base="als"):
 
     lo_mat = M_hat - qvals * s_hat
     up_mat = M_hat + qvals * s_hat
-    lo = lo_mat[1-S].reshape(-1)
-    up = up_mat[1-S].reshape(-1)
+    lo = lo_mat[~S].reshape(-1)
+    up = up_mat[~S].reshape(-1)
     
     return lo, up, r, qvals, M_hat, s_hat
 
