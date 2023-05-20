@@ -42,39 +42,6 @@ def projectNuclear(B,d1,d2,radius,alpha):
     return B_proj.reshape((d1*d2,))
 
 
-# fit logistic missingness
-# reference: https://github.com/Austinlccvic/A-Note-onStatistical-Inference-for-Noisy-Incomplete-1-Bit-Matrix
-def logis(data, theta, beta, q=1, tau = 0.3, tol = 0.1):
-    N=theta.shape[0]
-    J=beta.shape[0]
-    o1 = np.ones(J).reshape((1,J))
-    o2 = np.ones(N).reshape((N,1))
-    temp = theta @ o1 + o2 @ beta.T #M matrix at initial values
-    JML0 = -float('inf') #Initialize step 0 log likelihood as negative infinity
-    temp1 = np.log(1+np.exp(-temp))
-    temp2 = np.log(1-q+np.exp(-temp))
-    JML = np.sum(-temp1 + (1-data)*temp2) #Initialize step 1 log likelihood at initial values of beta and theta
-
-    while(JML - JML0 > tol):
-        JML0 = JML
-        prob = q/(1+np.exp(-temp))
-        grad = np.exp(-temp)*(1/(1+np.exp(-temp)) - (1-data)/(1-q+np.exp(-temp)))
-        theta = theta + tau * np.mean(grad, axis=1).reshape((N,1)) #update for theta estimates
-        theta = theta - np.mean(theta) #identifiability constraint
-        temp = theta @ o1 + o2 @ beta.T
-        temp1 = np.log(1+np.exp(-temp))
-        temp2 = np.log(1-q+np.exp(-temp))
-        
-        prob = q/(1+np.exp(-temp))
-        grad = np.exp(-temp)*(1/(1+np.exp(-temp)) - (1-data)/(1-q+np.exp(-temp)))
-        beta = beta + tau * np.mean(grad, axis=0).reshape((J,1)) #update for beta estimates
-        temp = theta @ o1 + o2 @ beta.T
-        temp1 = np.log(1+np.exp(-temp))
-        temp2 = np.log(1-q+np.exp(-temp))
-        JML = np.sum(-temp1 + (1-data)*temp2)
-  
-    return theta, beta
-
 # generate (low-rank) matrix M^*
 def mat_gen(d1,d2,P,k,M_mean=2):
     U = np.random.normal(0,1,d1*k).reshape((d1,k))
