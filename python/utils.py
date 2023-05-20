@@ -104,16 +104,59 @@ def mat_gen_mis(d1,d2,P,k,M_mean=2):
     return M_star, M, S
 
 
-# recovery via spectral method
-def low_rk_svd(M_, P_inv, k):
-    u, s, vt = scilinalg.svd(M_ * P_inv, full_matrices=False)
-    u_k = u[:,:k]
-    s_k = s[:k]
-    vt_k = vt[:k,:]
-    M_hat = u_k @ np.diag(s_k) @ vt_k
-    return M_hat
+def gen_data(d1, d2, het, sd, tail, pr, M_mean, mis_set, k_star):
+    P = gen_P(d1, d2, het, pr)
 
-# Cong: check whether this is used.
+    if mis_set == 1:
+        M_star, M_obs, S = mat_gen_mis(d1,d2,P,k_star,M_mean)
+    else:
+        M_star, M_obs, S = mat_gen(d1,d2,P,k_star,M_mean)
+    
+    # tails
+
+    if tail == 'gaussian':
+        E = sd * np.random.normal(0,1,d1*d2).reshape((d1,d2))
+    if tail == 't':
+        E = sd * np.random.standard_t(1.2, size=d1*d2).reshape((d1,d2))
+    if tail == 'het':
+        E = np.random.normal(0,(0.5/P).ravel(),d1*d2).reshape((d1,d2))
+    if tail == 'het1':
+        Q = gen_P(d1, d2, het, pr)
+        E = np.random.normal(0,(0.5/Q).ravel(),d1*d2).reshape((d1,d2))
+        
+    M_star += E
+    M_obs = M_obs + E * S
+    
+    assert (M_star * S == M_obs).all()
+    S = S.astype(dtype=bool)
+    return M_star, M_obs, P, S
+
+
+def model_based(rk, M_obs, S, M_star, alpha, base):
+    if base == "als":
+        Mhat, sigma_est, sigmaS = ALS_solve(M_obs, S, rk, 0.0)
+        itn = 0
+        while (np.linalg.norm((Mhat - M_star) * S) / np.linalg.norm(M_star * S) > 1) and (itn <= 5):
+            Mhat, sigma_est, sigmaS = ALS_solve(M_obs, S, rk, 0.0)
+            itn += 1
+        # s = np.sqrt(sigmaS**2 + sigma_est**2)
+    elif base == "cvx":
+        p_est = np.mean(S)
+        u, s, vh = svds_(M_obs/p_est, rk)
+        M_spectral = u @ np.diag(s) @ vh
+        sigma_est_spec = np.sqrt(np.sum((( M_obs - M_spectral)*S)**2)/(np.sum(S)))
+        Mhat, X_d, Y_d, sigma_est, sigmaS = cvx_mc(M_obs, S, p_est, rk, sigma_est_spec, eta=1)
+
+    s = np.sqrt(sigmaS**2 + sigma_est**2)
+
+    mul = norm.ppf(1-alpha/2)
+    lo_uq_mat = Mhat - s * mul
+    up_uq_mat = Mhat + s * mul
+    lo_uq = lo_uq_mat[~S].reshape(-1)
+    up_uq = up_uq_mat[~S].reshape(-1)
+    return lo_uq, up_uq, Mhat, s
+
+
 def svds_(M_,k):
     u, s, vt = scilinalg.svd(M_, full_matrices=False)
     u_k = u[:,:k]
@@ -198,7 +241,7 @@ def cvx_mc(A, S, p_est, rk, sigma_est, lam=0, eta=0.1, max_iter=1000):
     return Z_d, X_d, Y_d, sigma_est, sigmaS
     
     
-def ALS_solve(M, Ω, r, mu, epsilon=1e-3, max_iterations=100, debug = False):
+def ALS_solve(M, Ω, r, mu, epsilon=1e-3, max_iterations=100, debug = True):
     d1, d2 = M.shape
     U = np.random.randn(d1, r)
     V = np.random.randn(d2, r)
@@ -246,6 +289,35 @@ def compute_Sigma_gaussian(Mhat, r, p_observe, sigma_est):
     sigmaS = sigma_est * np.sqrt(sigmaS)
 
     return sigmaS
+
+
+def gen_P(d1, d2, het, pr):
+    # missingness pattern
+    if het=='rank1':
+        # rank-1 structure
+        lo_p = 0.3
+        up_p = 0.9
+        u = np.random.uniform(lo_p,up_p,d1).reshape((d1,1))
+        v = np.random.uniform(lo_p,up_p,d2).reshape((d2,1))
+        P = u @ v.T
+    elif het == 'logis1':
+        L = 0.5
+        k_p = 5
+        u = L*np.random.uniform(0,2,d1*k_p).reshape((d1,k_p))
+        v = L*np.random.uniform(-1,1,d2*k_p).reshape((d2,k_p))
+        AA = u @ v.T
+        P = 1/(1+np.exp(-AA))
+    elif het == 'logis2':
+        L = 0.5
+        k_l = 1
+        u = L*np.random.uniform(0,2,d1*k_l).reshape((d1,k_l))
+        v = L*np.random.uniform(-1,1,d2*k_l).reshape((d2,k_l))
+        AA = u@v.T
+        P = 1/(1+np.exp(-AA))
+    elif het == 'homo':
+        P = pr * np.ones((d1,d2))
+    return P
+
 
 
 # defined functions for conformal prediction
@@ -332,20 +404,17 @@ def cmc_alg(M_obs, S, alpha, q, rk, P, missing_model="homo", base="als"):
     d1, d2 = M_obs.shape
 
     n_obs = np.sum(S)
-    n0 = d1 * d2 - n_obs
+    n0 = d1 * d2 - n_obs # number of unobserved entries
 
     lo, up = np.zeros(n0), np.zeros(n0)
     
     # split the observed matrix into train and calibration sets
     train_selector = np.less(np.random.rand(d1,d2), q)
-
     S_train = (S * train_selector).astype(dtype=bool)
     S_cal = (S * (1 - train_selector)).astype(dtype=bool)
-
     n_train = np.sum(S_train)
     n_cal = n_obs - n_train
     assert n_cal == np.sum(S_cal)
-
     M_train = M_obs * S_train
     M_cal = M_obs * S_cal
 
@@ -356,7 +425,7 @@ def cmc_alg(M_obs, S, alpha, q, rk, P, missing_model="homo", base="als"):
     # estimate M_hat and s_hat from M_train
     M_hat, s_hat = estimate_M(M_train, S_train, rk, P_hat, q, base)
 
-    
+    # compute the score function
     score = np.divide(np.abs(M_cal - M_hat), s_hat)
     
     H_hat = (1 - P_hat) / P_hat
