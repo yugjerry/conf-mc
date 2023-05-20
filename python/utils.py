@@ -374,7 +374,7 @@ def estimate_P(S_train, q, P, missing_model='homo'):
         U,s_hat,Vh = np.linalg.svd(A_hat)
         M_d = U[:,:k_l]@np.diag(s_hat[:k_l])@Vh[:k_l,:]
         P_hat = (1/q )*f_(M_d,q ).reshape((d1,d2)) 
-    elif het=='rank1':
+    elif missing_model=='rank1':
         u_hat, s_hat, vt_hat = svds_(S_train,1)
         P_hat = (1/q)*u_hat @ np.diag(s_hat) @ vt_hat
     return P_hat 

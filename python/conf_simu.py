@@ -18,7 +18,7 @@ from utils import *
 
 
 
-def cfmc_simu(M_star, S, P, base="als", rk=5, alpha=0.1):
+def cfmc_simu(M_star, S, P, base="als", rk=5, alpha=0.1, missing_model="homo"):
     # M_star: underlying true matrix
     # S: locations for observed entries
     # P: true observation probability
@@ -30,7 +30,7 @@ def cfmc_simu(M_star, S, P, base="als", rk=5, alpha=0.1):
     
     # construct lower & upper bnds
     q = 0.8
-    lo_als, up_als, r, qvals, M_cf_als, s_cf_als = cmc_alg(M_obs, S, alpha, q, rk, P, "homo", base)
+    lo_als, up_als, r, qvals, M_cf_als, s_cf_als = cmc_alg(M_obs, S, alpha, q, rk, P, missing_model, base)
 
     # model-based: alternating least squares
     lo_uq_als, up_uq_als, Mhat_als, s_als = model_based(rk,M_obs,S,M_star,alpha,base)
@@ -51,7 +51,7 @@ def cfmc_simu(M_star, S, P, base="als", rk=5, alpha=0.1):
 
 
 
-def cfmc_simu_hetero(M_star, S, P, base="als", missing_model="logis1", rk=5, alpha=0.1):
+def cfmc_simu_hetero(M_star, S, P, base="als", rk=5, alpha=0.1, missing_model="logis1"):
     
     # M_star: underlying true matrix
     # S: locations for observed entries
@@ -66,10 +66,10 @@ def cfmc_simu_hetero(M_star, S, P, base="als", missing_model="logis1", rk=5, alp
     
     # construct lower & upper bnds
     q = 0.8
-    lo_als_hat, up_als_hat, r, qvals, _, _ = cmc_alg(M_obs, S, alpha, q, rk, P, missing_model, base="als")
+    lo_als_hat, up_als_hat, r, qvals, _, _ = cmc_alg(M_obs, S, alpha, q, rk, P, missing_model, base)
     
     # oracle case: when P is known
-    lo_als, up_als, _, _, _, _ = cmc_alg(M_obs, S, alpha, q, rk, P, "oracle", base="als")
+    lo_als, up_als, _, _, _, _ = cmc_alg(M_obs, S, alpha, q, rk, P, "oracle", base)
     
     
     # evaluation
