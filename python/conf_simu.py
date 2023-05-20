@@ -58,6 +58,7 @@ def cfmc_simu_hetero(M_star, S, P, base="als", missing_model="logis1", rk=5, alp
     # P: true observation probability
     # base is either als or cvx
     # rk is the rank used in als
+    # missing_model: the way observed indices S are sampled
     # 1 - alpha is the coverage level
     
     M_obs = M_star * S    
