@@ -51,61 +51,33 @@ def cfmc_simu(M_star, S, P, base="als", rk=5, alpha=0.1):
 
 
 
-def cfmc_simu_hetero(alpha, rk, M_obs, S, M_star, P, het, full_exp=False):
+def cfmc_simu_hetero(M_star, S, P, base="als", missing_model="logis1", rk=5, alpha=0.1):
     
-    d1, d2 = M_obs.shape[0], M_obs.shape[1]
-        
     # M_star: underlying true matrix
-    # M_obs: partially observed matrix
-
-    # unobserved indices
-    ind_test = np.transpose(np.nonzero(S==0))
-    n0 = ind_test.shape[0]
+    # S: locations for observed entries
+    # P: true observation probability
+    # base is either als or cvx
+    # rk is the rank used in als
+    # 1 - alpha is the coverage level
+    
+    M_obs = M_star * S    
 
     
     # construct lower & upper bnds
     q = 0.8
-    lo_als_hat, up_als_hat, r, qvals, _, _ = cmc_alg(M_obs, S, alpha, q, rk, P, missing_model=het, base="als")
+    lo_als_hat, up_als_hat, r, qvals, _, _ = cmc_alg(M_obs, S, alpha, q, rk, P, missing_model, base="als")
     
     # oracle case: when P is known
-    lo_als, up_als, _, _, _, _ = cmc_alg(M_obs, S, alpha, q, rk, P, missing_model="oracle", base="als")
+    lo_als, up_als, _, _, _, _ = cmc_alg(M_obs, S, alpha, q, rk, P, "oracle", base="als")
     
-    if full_exp:
-        lo_cvx_hat, up_cvx_hat, r_, qvals_, M_cf_cvx, s_cf_cvx = cmc_alg(M_obs, S, alpha, q, rk, P, missing_model="oracle", base="cvx")
-        
-        lo_cvx, up_cvx, _, _, _, _ = cmc_alg(M_obs, S, alpha, q, rk, P, missing_model=het, base="cvx")
-        
-        # evaluation
-        m_star = []
-        for i in range(ind_test.shape[0]):
-            m_star = np.append(m_star, M_star[ind_test[i,0],ind_test[i,1]])
-
-        # compute coverage rate and average length
-        coverage_cmc_cvx = np.mean((lo_cvx <= m_star) & (up_cvx >= m_star))
-        coverage_cmc_als = np.mean((lo_als <= m_star) & (up_als >= m_star))
-        coverage_cmc_cvx_hat = np.mean((lo_cvx_hat <= m_star) & (up_cvx_hat >= m_star))
-        coverage_cmc_als_hat = np.mean((lo_als_hat <= m_star) & (up_als_hat >= m_star))
-       
-        
-        length_cmc_cvx = np.round(np.mean((up_cvx - lo_cvx)),4)
-        length_cmc_als = np.round(np.mean((up_als - lo_als)),4)
-        length_cmc_cvx_hat = np.round(np.mean((up_cvx_hat - lo_cvx_hat)),4)
-        length_cmc_als_hat = np.round(np.mean((up_als_hat - lo_als_hat)),4)
-        
-        return coverage_cmc_cvx, coverage_cmc_als, coverage_cmc_cvx_hat, coverage_cmc_als_hat, length_cmc_cvx, length_cmc_als, length_cmc_cvx_hat, length_cmc_als_hat
-        
-    else:
     
-        # evaluation
-        m_star = []
-        for i in range(ind_test.shape[0]):
-            m_star = np.append(m_star, M_star[ind_test[i,0],ind_test[i,1]])
-        # compute coverage rate and average length
-        coverage_cmc_als = np.mean((lo_als <= m_star) & (up_als >= m_star))
-        coverage_cmc_als_hat = np.mean((lo_als_hat <= m_star) & (up_als_hat >= m_star))
-        
-        
-        length_cmc_als = np.round(np.mean((up_als - lo_als)),4)
-        length_cmc_als_hat = np.round(np.mean((up_als_hat - lo_als_hat)),4)
+    # evaluation
+    m_star = M_star[~S].reshape(-1)
 
-        return coverage_cmc_als, coverage_cmc_als_hat, length_cmc_als, length_cmc_als_hat
+    # compute coverage rate and average length
+    coverage_cmc_als = np.mean((lo_als <= m_star) & (up_als >= m_star))
+    coverage_cmc_als_hat = np.mean((lo_als_hat <= m_star) & (up_als_hat >= m_star))
+    length_cmc_als = np.round(np.mean((up_als - lo_als)),4)
+    length_cmc_als_hat = np.round(np.mean((up_als_hat - lo_als_hat)),4)
+
+    return coverage_cmc_als, coverage_cmc_als_hat, length_cmc_als, length_cmc_als_hat

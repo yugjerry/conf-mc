@@ -241,7 +241,7 @@ def cvx_mc(A, S, p_est, rk, sigma_est, lam=0, eta=0.1, max_iter=1000):
     return Z_d, X_d, Y_d, sigma_est, sigmaS
     
     
-def ALS_solve(M, Ω, r, mu, epsilon=1e-3, max_iterations=100, debug = True):
+def ALS_solve(M, Ω, r, mu, epsilon=1e-3, max_iterations=100, debug = False):
     d1, d2 = M.shape
     U = np.random.randn(d1, r)
     V = np.random.randn(d2, r)
