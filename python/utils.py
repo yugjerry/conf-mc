@@ -278,7 +278,7 @@ def cvx_mc(A, S, p_est, rk, sigma_est, lam=0, eta=0.1, max_iter=1000):
     return Z_d, X_d, Y_d, sigma_est, sigmaS
     
     
-def ALS_solve(M, Ω, r, mu, epsilon=1e-3, max_iterations=100, debug = False):
+def ALS_solve(M, Ω, r, mu, epsilon=1e-3, max_iterations=100):
     d1, d2 = M.shape
     U = np.random.randn(d1, r)
     V = np.random.randn(d2, r)
@@ -300,8 +300,7 @@ def ALS_solve(M, Ω, r, mu, epsilon=1e-3, max_iterations=100, debug = False):
         V = solve(M, U, Ω)
         X = U @ V.T
         mean_diff = np.linalg.norm(X - prev_X) / np.linalg.norm(X)
-        if debug:
-            print("Iteration: %i; Mean diff: %.4f" % (_ + 1, mean_diff))
+
         if mean_diff < epsilon:
             break
         prev_X = X
